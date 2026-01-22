@@ -2,56 +2,69 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>WordCraft 3D: Textured Edition</title>
+    <title>WordCraft 3D: Final Texture Edition</title>
     <style>
         /* --- CORE STYLES --- */
-        body { margin: 0; overflow: hidden; font-family: 'Verdana', sans-serif; user-select: none; background: #2c3e50; }
+        body { margin: 0; overflow: hidden; font-family: 'Verdana', sans-serif; user-select: none; background: #000; }
         
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 24px; height: 24px;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>');
-            transform: translate(-50%, -50%); pointer-events: none; z-index: 10; display: none;
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.9); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
+            display: none; /* Hidden until start */
         }
         
-        #hud-desktop {
-            position: absolute; top: 10px; left: 10px; color: white; 
+        #hud-layer {
+            position: absolute; top: 10px; left: 10px; color: white;
             text-shadow: 2px 2px 0 #000; pointer-events: none; display: none; z-index: 10;
-            font-size: 18px;
+            font-size: 18px; font-weight: bold;
         }
 
-        /* --- THE ORIGINAL 2D INVENTORY --- */
-        #desktop-inv {
+        /* --- YOUR ORIGINAL 2D INVENTORY --- */
+        #inventory-screen {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 750px; height: 600px; 
-            background: #f3e5f5 url('assets/bg.png') repeat; /* Uses your BG */
-            border: 4px solid #5d4037; border-radius: 8px; display: none; 
+            /* Using your BG asset */
+            background: #f3e5f5 url('assets/bg.png'); background-size: cover;
+            border: 6px solid #5d4037; border-radius: 12px; display: none;
             flex-direction: column; z-index: 100; color: #3e2723;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
         }
         
-        .inv-header { padding: 15px; background: rgba(255,255,255,0.95); border-bottom: 3px solid #5d4037; }
+        .inv-header { padding: 15px; background: rgba(255,255,255,0.95); border-bottom: 4px solid #5d4037; }
         .inv-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .inv-footer { padding: 15px; background: rgba(255,255,255,0.95); border-top: 3px solid #5d4037; display:flex; justify-content:center; }
+        .inv-footer { padding: 15px; background: rgba(255,255,255,0.95); border-top: 4px solid #5d4037; text-align:center; }
 
-        /* TABS */
-        .forge-tabs { display: flex; background: rgba(0,0,0,0.1); border-radius: 6px; overflow: hidden; margin-bottom:10px;}
-        .tab { flex: 1; padding: 12px; cursor: pointer; font-weight: bold; background: rgba(255,255,255,0.5); border-right: 1px solid rgba(0,0,0,0.1); text-align:center;}
-        .tab.active { background: #fff; color: #d35400; box-shadow: inset 0 -3px 0 #d35400; }
+        /* Forge UI */
+        .forge-area { 
+            display: flex; justify-content: center; align-items: center; gap: 10px; 
+            padding: 20px; background: rgba(255,255,255,0.6); border-radius: 8px; border: 2px dashed #5d4037;
+        }
+        .slot { 
+            width: 70px; height: 70px; background: #fff; border: 3px solid #5d4037; 
+            display: flex; align-items: center; justify-content: center; 
+            font-weight: bold; cursor: pointer; border-radius: 8px;
+            transition: 0.2s;
+        }
+        .slot:hover { transform: scale(1.05); border-color: #e67e22; }
 
-        /* FORGE */
-        .crafting-grid { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 10px 0; }
-        .craft-slot { width: 70px; height: 70px; border: 3px dashed #5d4037; display: flex; align-items: center; justify-content: center; font-weight: bold; background: rgba(255,255,255,0.8); cursor: pointer; border-radius: 8px; font-size: 14px; }
-        .word-chip { background: #fff; border: 2px solid #5d4037; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: bold; margin:2px; display:inline-block; }
-        .chip-pre { background: #bbdefb; border-color: #1565c0; color: #0d47a1; } 
-        .chip-root { background: #c8e6c9; border-color: #2e7d32; color: #1b5e20; }
-        .chip-suf { background: #e1bee7; border-color: #7b1fa2; color: #4a148c; } 
+        /* Chips */
+        .chip { 
+            display: inline-block; padding: 8px 12px; margin: 4px; border-radius: 20px; 
+            background: white; border: 2px solid #5d4037; font-weight: bold; cursor: pointer;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.2);
+        }
+        .chip:active { transform: translateY(2px); box-shadow: none; }
+        .chip-root { background: #c8e6c9; color: #1b5e20; }
+        .chip-affix { background: #bbdefb; color: #0d47a1; }
 
-        /* CRAFTING ROWS */
-        .craft-row { display: flex; align-items: center; gap: 10px; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #aaa; margin-bottom: 5px; }
-        .craft-btn { background: #27ae60; color: white; border: none; padding: 8px 15px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-left:auto; }
-
-        #forge-msg { min-height: 50px; background: #fff8e1; border: 2px solid #d35400; padding: 10px; text-align: center; border-radius: 6px; color: #d35400; font-weight: bold; }
-        .close-btn { background: #c0392b; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        #forge-msg { 
+            background: #fff8e1; border: 2px solid #ffca28; padding: 10px; margin-top: 10px;
+            text-align: center; border-radius: 6px; font-weight: bold; color: #f57f17; min-height: 40px;
+        }
+        
+        .btn { background: #d35400; color: white; border: none; padding: 10px 25px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; }
+        .btn:hover { background: #e67e22; }
     </style>
     
     <script type="importmap">
@@ -59,208 +72,211 @@
     </script>
 </head>
 <body>
+
     <div id="crosshair"></div>
-    <div id="hud-desktop">
+    <div id="hud-layer">
         <h2>WordCraft 3D</h2>
-        <div>Click to Start | 'E' Inventory | 'Space' Jump</div>
-        <div>💎 Gems: <span id="hud-gems">0</span></div>
+        <p>Click to Start | WASD Move | Click Mine | 'E' Inventory</p>
+        <p>💎 Gems: <span id="hud-gems">0</span></p>
     </div>
 
-    <div id="desktop-inv">
+    <div id="inventory-screen">
         <div class="inv-header">
-            <div class="forge-tabs">
-                <div class="tab active" onclick="switchTab('word')">Word Forge</div>
-                <div class="tab" onclick="switchTab('craft')">Crafting</div>
-                <div class="tab" onclick="switchTab('salvage')">Salvage</div>
-            </div>
-            <div id="resource-bar" style="display:flex; justify-content:center; gap:15px; font-weight:bold;">
-                <span>💎: <span id="res-frag">0</span></span>
-                <span>🟫: <span id="res-dirt">0</span></span>
-                <span>🌑: <span id="res-stone">0</span></span>
-                <span>🪵: <span id="res-wood">0</span></span>
-            </div>
+            <h2 style="margin:0; text-align:center;">The Word Forge</h2>
         </div>
-
         <div class="inv-body">
-            <div id="tab-word" style="display:flex; flex-direction:column;">
-                <div class="crafting-grid">
-                    <div id="slot-pre" class="craft-slot" onclick="clearSlot('pre')">[Pre]</div> +
-                    <div id="slot-root" class="craft-slot" onclick="clearSlot('root')">[ROOT]</div> +
-                    <div id="slot-suf" class="craft-slot" onclick="clearSlot('suf')">[Suf]</div>
-                    <button onclick="runForge()" style="height:70px; width:70px; background:#27ae60; border:none; color:white; border-radius:8px; font-size:30px; cursor:pointer;">🔨</button>
-                </div>
-                <div id="forge-msg">Forge words to check the Dictionary!</div>
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                    <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
-                        <small>ROOTS</small><div id="list-roots"></div>
-                    </div>
-                    <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
-                        <small>AFFIXES</small><div id="list-affixes"></div>
-                    </div>
-                </div>
+            <div class="forge-area">
+                <div id="slot-pre" class="slot" onclick="clearSlot('pre')">[Pre]</div> +
+                <div id="slot-root" class="slot" onclick="clearSlot('root')">[ROOT]</div> +
+                <div id="slot-suf" class="slot" onclick="clearSlot('suf')">[Suf]</div>
+                <button class="btn" style="background:#27ae60; height:70px;" onclick="runForge()">🔨</button>
             </div>
-
-            <div id="tab-craft" style="display:none; flex-direction:column;">
-                <div class="craft-row">
-                    <div style="font-size:24px;">💊</div>
-                    <div><b>Mud Poultice</b><br><small>Cost: 3 Dirt</small></div>
-                    <button class="craft-btn" onclick="craft('heal')">Craft</button>
+            <div id="forge-msg">Combine parts to verify with Dictionary API</div>
+            
+            <div style="display:flex; gap:20px;">
+                <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
+                    <h4>ROOTS</h4>
+                    <div id="list-roots"></div>
                 </div>
-                <div class="craft-row">
-                    <div style="font-size:24px;">🚪</div>
-                    <div><b>Magic Door</b><br><small>Cost: 2 Wood + 1 Stone</small></div>
-                    <button class="craft-btn" onclick="craft('door')">Craft</button>
+                <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
+                    <h4>AFFIXES</h4>
+                    <div id="list-affixes"></div>
                 </div>
-            </div>
-
-            <div id="tab-salvage" style="display:none; text-align:center;">
-                <h3>Artifacts</h3>
-                <div id="list-artifacts">No artifacts found yet. Go dig deep!</div>
             </div>
         </div>
         <div class="inv-footer">
-            <button class="close-btn" onclick="toggleInventory()">Close & Resume</button>
+            <button class="btn" onclick="toggleInventory()">Close & Resume</button>
         </div>
     </div>
 
 <script type="module">
     import * as THREE from 'three';
-    import { VRButton } from 'three/addons/webxr/VRButton.js';
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-    // --- 1. DATA ---
+    // --- 1. DATA & SETTINGS ---
+    const CHUNK_SIZE = 16;
+    const RENDER_DISTANCE = 2; 
+    const WORLD_DEPTH = 10;
+    
     const WORD_DATA = {
-        "dirt": { roots: ["play", "help", "walk"], affixes: ["s", "ed", "ing"] },
+        "dirt": { roots: ["play", "help", "walk", "look"], affixes: ["s", "ed", "ing"] },
         "stone": { roots: ["struct", "ject", "form"], affixes: ["re", "un", "tion"] },
         "wood": { roots: ["grow", "leaf"], affixes: ["ness", "ful"] }
     };
-    
-    let player = { gems: 0, resources: {dirt:0, stone:0, wood:0}, roots: [], affixes: [], artifacts: [] };
+
+    let player = { gems: 0, roots: [], affixes: [] };
     let forge = { pre: null, root: null, suf: null };
 
-    // --- 2. SCENE ---
+    // --- 2. SCENE SETUP ---
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky Blue base
-    scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+    scene.background = new THREE.Color(0x87CEEB); // Sky Blue
+    scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
 
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
     const user = new THREE.Group();
-    user.position.set(0, 10, 0); 
+    user.position.set(0, 20, 0); // Drop in from sky
     user.add(camera);
     scene.add(user);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false }); // Pixelated style
+    const renderer = new THREE.WebGLRenderer({ antialias: false }); // Crisp pixels
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-    document.body.appendChild(VRButton.createButton(renderer));
 
-    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-    scene.add(light);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
 
-    // --- 3. TEXTURED BLOCKS ---
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    // --- 3. TEXTURE ATLAS LOGIC (The Fix) ---
     const textureLoader = new THREE.TextureLoader();
+    let atlas = null;
     
-    // We try to load 'assets/tiles.png'. If it fails, we use colors.
-    // NOTE: In Three.js, Texture mapping from a sprite sheet is complex. 
-    // For simplicity in a single file, we will load the whole image and repeat it, 
-    // OR allow fallback to colors if the user doesn't have the image ready.
-    
-    let blockMat;
+    // Attempt to load the asset
     try {
-        const tex = textureLoader.load('assets/tiles.png');
-        tex.magFilter = THREE.NearestFilter; // Pixelated
-        blockMat = new THREE.MeshLambertMaterial({ map: tex });
-    } catch(e) {
-        // Fallback
-        blockMat = new THREE.MeshLambertMaterial({ color: 0x888888 }); 
+        atlas = textureLoader.load('assets/tiles.png');
+        atlas.magFilter = THREE.NearestFilter;
+        atlas.minFilter = THREE.NearestFilter;
+        atlas.wrapS = THREE.RepeatWrapping;
+        atlas.wrapT = THREE.RepeatWrapping;
+    } catch(e) { console.warn("Texture load failed"); }
+
+    // Helper to map 1 tile from the vertical strip of 6
+    function getMaterial(index) {
+        if(!atlas) return new THREE.MeshLambertMaterial({ color: 0x888888 }); // Fallback
+        
+        const mat = new THREE.MeshLambertMaterial({ map: atlas.clone() });
+        // There are 6 tiles vertically. 1/6 = 0.1666
+        mat.map.repeat.set(1, 1/6);
+        mat.map.offset.y = index * (1/6); 
+        return mat;
     }
 
-    // Since mapping UVs for a spritesheet in raw code is huge, 
-    // we will use simple colored materials for "Types" if you want reliability,
-    // or we can map them. I will use colored materials that MATCH your 2D game perfectly.
-    
-    const mats = {
-        dirt: new THREE.MeshLambertMaterial({ color: 0x5d4037 }), // Brown
-        grass: new THREE.MeshLambertMaterial({ color: 0x2ecc71 }), // Green
-        stone: new THREE.MeshLambertMaterial({ color: 0x7f8c8d }), // Grey
-        wood: new THREE.MeshLambertMaterial({ color: 0x8d6e63 }), // Wood
-        leaf: new THREE.MeshLambertMaterial({ color: 0x27ae60 })  // Dark Green
+    // Material Map based on your 'tiles.png' layout (Bottom to Top usually)
+    // Assuming: 0=Water, 1=Wood, 2=Pillar, 3=Stone, 4=Dirt, 5=Grass
+    const materials = {
+        grass: getMaterial(5),  // Top Block
+        dirt: getMaterial(4),   // 2nd Block
+        stone: getMaterial(3),  // 3rd Block
+        bedrock: getMaterial(2),// 4th Block (Pillar)
+        wood: getMaterial(1),   // 5th Block (Wood)
+        water: getMaterial(0),  // Bottom Block
+        
+        // Leaf fallback (Tint the wood green or use grass)
+        leaf: new THREE.MeshLambertMaterial({ color: 0x228b22 }) 
     };
 
-    const blocks = []; // For Raycasting
-    const collisionBlocks = []; // For Physics
+    // --- 4. INFINITE TERRAIN ---
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const chunks = {};
+    const activeBlocks = []; // For Raycasting
+    const colliders = [];    // For Physics
 
     function createBlock(x, y, z, type) {
-        const mesh = new THREE.Mesh(geometry, mats[type]);
+        const mesh = new THREE.Mesh(geometry, materials[type]);
         mesh.position.set(x, y, z);
-        mesh.userData = { type: type };
-        
-        // Outline for "Voxel" look
-        const edges = new THREE.EdgesGeometry(geometry);
-        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 }));
-        mesh.add(line);
-
+        mesh.userData = { type: type, isBlock: true };
         scene.add(mesh);
-        blocks.push(mesh);
-        collisionBlocks.push(mesh);
+        activeBlocks.push(mesh);
+        colliders.push(mesh);
+        return mesh;
     }
 
-    // --- 4. WORLD GEN ---
-    function generateWorld() {
-        for(let x=-10; x<10; x++) {
-            for(let z=-10; z<10; z++) {
-                // Height Noise
-                let h = Math.floor(Math.sin(x*0.3)*2 + Math.cos(z*0.3)*2);
+    function generateChunk(cx, cz) {
+        const key = `${cx},${cz}`;
+        if (chunks[key]) return;
+        chunks[key] = [];
+
+        const startX = cx * CHUNK_SIZE;
+        const startZ = cz * CHUNK_SIZE;
+
+        for (let x = startX; x < startX + CHUNK_SIZE; x++) {
+            for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
+                let h = Math.floor(Math.sin(x * 0.15) * 3 + Math.cos(z * 0.15) * 3);
                 
-                // Surface
-                createBlock(x, h, z, 'grass');
-                
-                // Dirt Layer (Diggable!)
-                createBlock(x, h-1, z, 'dirt');
-                createBlock(x, h-2, z, 'dirt');
-                createBlock(x, h-3, z, 'dirt');
-                
-                // Stone Layer
-                for(let d=4; d<8; d++) createBlock(x, h-d, z, 'stone');
-                
+                // Terrain Stack
+                chunks[key].push(createBlock(x, h, z, 'grass'));
+                chunks[key].push(createBlock(x, h-1, z, 'dirt'));
+                chunks[key].push(createBlock(x, h-2, z, 'dirt'));
+                for(let d=3; d<WORLD_DEPTH; d++) chunks[key].push(createBlock(x, h-d, z, 'stone'));
+                chunks[key].push(createBlock(x, h-WORLD_DEPTH, z, 'bedrock'));
+
                 // Trees
-                if(Math.random() < 0.05) {
-                    createBlock(x, h+1, z, 'wood');
-                    createBlock(x, h+2, z, 'wood');
-                    createBlock(x, h+3, z, 'leaf');
+                if (Math.random() < 0.03) {
+                    let th = h + 1;
+                    chunks[key].push(createBlock(x, th, z, 'wood'));
+                    chunks[key].push(createBlock(x, th+1, z, 'wood'));
+                    chunks[key].push(createBlock(x, th+2, z, 'leaf'));
+                    chunks[key].push(createBlock(x+1, th+1, z, 'leaf'));
+                    chunks[key].push(createBlock(x-1, th+1, z, 'leaf'));
+                    chunks[key].push(createBlock(x, th+1, z+1, 'leaf'));
+                    chunks[key].push(createBlock(x, th+1, z-1, 'leaf'));
                 }
             }
         }
     }
-    generateWorld();
 
-    // --- 5. CONTROLS (FIXED) ---
+    function updateWorld() {
+        const px = user.position.x;
+        const pz = user.position.z;
+        const cx = Math.floor(px / CHUNK_SIZE);
+        const cz = Math.floor(pz / CHUNK_SIZE);
+
+        for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
+            for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
+                generateChunk(cx + x, cz + z);
+            }
+        }
+        
+        // Simple Cleanup
+        for (const key in chunks) {
+            const [kcx, kcz] = key.split(',').map(Number);
+            if (Math.abs(kcx - cx) > RENDER_DISTANCE + 1 || Math.abs(kcz - cz) > RENDER_DISTANCE + 1) {
+                chunks[key].forEach(mesh => {
+                    scene.remove(mesh);
+                    const ai = activeBlocks.indexOf(mesh); if(ai>-1) activeBlocks.splice(ai,1);
+                    const ci = colliders.indexOf(mesh); if(ci>-1) colliders.splice(ci,1);
+                });
+                delete chunks[key];
+            }
+        }
+    }
+
+    // --- 5. CONTROLS & PHYSICS ---
     const controls = new PointerLockControls(camera, document.body);
-    let moveF = false, moveB = false, moveL = false, moveR = false;
+    let moveF=false, moveB=false, moveL=false, moveR=false;
     let velocity = new THREE.Vector3();
     let canJump = false;
-    let isInvOpen = false;
+    let isInventoryOpen = false;
 
-    // Click to capture
-    document.addEventListener('click', () => {
-        if(!isInvOpen && !renderer.xr.isPresenting) {
-            controls.lock();
-            document.getElementById('crosshair').style.display = 'block';
-            document.getElementById('hud-desktop').style.display = 'block';
-        } else if (controls.isLocked) {
-            mineBlock();
-        }
-    });
-
+    // Keys
     document.addEventListener('keydown', (e) => {
         switch(e.code) {
             case 'KeyW': moveF = true; break;
             case 'KeyS': moveB = true; break;
             case 'KeyA': moveL = true; break;
             case 'KeyD': moveR = true; break;
-            case 'Space': if(canJump) velocity.y = 10; canJump = false; break;
+            case 'Space': if(canJump) velocity.y = 12; canJump = false; break;
             case 'KeyE': toggleInventory(); break;
         }
     });
@@ -273,47 +289,123 @@
         }
     });
 
-    // --- 6. MINING (FIXED RAYCASTER) ---
+    // Mouse Interaction
+    document.addEventListener('click', () => {
+        if(!isInventoryOpen) {
+            if(!controls.isLocked) {
+                controls.lock();
+                document.getElementById('crosshair').style.display = 'block';
+                document.getElementById('hud-layer').style.display = 'block';
+            } else {
+                mineBlock();
+            }
+        }
+    });
+
+    // Mining Raycaster
     const raycaster = new THREE.Raycaster();
     const center = new THREE.Vector2(0,0);
 
     function mineBlock() {
         raycaster.setFromCamera(center, camera);
-        const intersects = raycaster.intersectObjects(blocks);
+        const intersects = raycaster.intersectObjects(activeBlocks);
         
-        if(intersects.length > 0 && intersects[0].distance < 5) {
+        if (intersects.length > 0 && intersects[0].distance < 6) {
             const hit = intersects[0].object;
             const type = hit.userData.type;
             
-            // Destroy
+            if(type === 'bedrock') return; // Cannot mine
+
             scene.remove(hit);
-            blocks.splice(blocks.indexOf(hit), 1);
-            collisionBlocks.splice(collisionBlocks.indexOf(hit), 1);
+            activeBlocks.splice(activeBlocks.indexOf(hit), 1);
+            colliders.splice(colliders.indexOf(hit), 1);
             
-            // Resources
-            if(player.resources[type] !== undefined) player.resources[type]++;
-            
-            // Drops
+            // Loot Logic
             if(WORD_DATA[type] && Math.random() < 0.7) {
                 const loot = WORD_DATA[type];
                 if(Math.random() < 0.5) {
                     let w = loot.roots[Math.floor(Math.random()*loot.roots.length)];
-                    player.roots.push({word:w});
+                    player.roots.push(w);
                 } else {
                     let a = loot.affixes[Math.floor(Math.random()*loot.affixes.length)];
-                    player.affixes.push({val:a.val, type:a.type});
+                    player.affixes.push({val:a, type:"suf"});
                 }
                 player.gems++;
+                updateHud();
             }
-            updateHud();
         }
     }
 
-    // --- 7. UI & INVENTORY ---
+    // Collision Logic
+    const playerBox = new THREE.Box3();
+    const playerSize = new THREE.Vector3(0.5, 1.8, 0.5);
+    const wallBox = new THREE.Box3();
+
+    function checkCollision(pos) {
+        playerBox.setFromCenterAndSize(pos, playerSize);
+        for(let mesh of colliders) {
+            if(mesh.position.distanceToSquared(pos) < 6) { // Optimization
+                wallBox.setFromObject(mesh);
+                if(wallBox.intersectsBox(playerBox)) return true;
+            }
+        }
+        return false;
+    }
+
+    // --- 6. GAME LOOP ---
+    const clock = new THREE.Clock();
+    updateWorld(); // Init
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.1);
+
+        if(controls.isLocked) {
+            // Friction
+            velocity.x -= velocity.x * 10.0 * dt;
+            velocity.z -= velocity.z * 10.0 * dt;
+            velocity.y -= 30.0 * dt; // Gravity
+
+            // WASD Direction relative to Camera
+            const direction = new THREE.Vector3();
+            direction.z = Number(moveF) - Number(moveB);
+            direction.x = Number(moveR) - Number(moveL);
+            direction.normalize();
+
+            if (moveF || moveB) velocity.z -= direction.z * 150.0 * dt;
+            if (moveL || moveR) velocity.x -= direction.x * 150.0 * dt;
+
+            // Apply Move (X/Z)
+            controls.moveRight(-velocity.x * dt);
+            controls.moveForward(-velocity.z * dt);
+            
+            // Apply Gravity (Y)
+            user.position.y += velocity.y * dt;
+
+            // Simple Floor Check
+            // We cast a ray down from feet
+            const footPos = user.position.clone();
+            footPos.y -= 1.6;
+            
+            // Are we inside a block?
+            if(checkCollision(footPos)) {
+                velocity.y = Math.max(0, velocity.y);
+                user.position.y = Math.ceil(footPos.y) + 1.6;
+                canJump = true;
+            }
+
+            // Infinite Gen
+            updateWorld();
+        }
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // --- 7. INVENTORY SYSTEM ---
     window.toggleInventory = function() {
-        isInvOpen = !isInvOpen;
-        const el = document.getElementById('desktop-inv');
-        if(isInvOpen) {
+        isInventoryOpen = !isInventoryOpen;
+        const el = document.getElementById('inventory-screen');
+        if(isInventoryOpen) {
             controls.unlock();
             el.style.display = 'flex';
             renderInv();
@@ -323,121 +415,50 @@
         }
     };
 
-    window.switchTab = function(t) {
-        document.getElementById('tab-word').style.display = t==='word'?'flex':'none';
-        document.getElementById('tab-craft').style.display = t==='craft'?'flex':'none';
-        document.getElementById('tab-salvage').style.display = t==='salvage'?'block':'none';
-        document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
-        event.target.classList.add('active');
-    };
-
     function updateHud() {
         document.getElementById('hud-gems').innerText = player.gems;
-        document.getElementById('res-frag').innerText = player.gems;
-        document.getElementById('res-dirt').innerText = player.resources.dirt;
-        document.getElementById('res-stone').innerText = player.resources.stone;
-        document.getElementById('res-wood').innerText = player.resources.wood;
     }
 
     window.renderInv = function() {
         updateHud();
-        // Roots
-        let rList = document.getElementById('list-roots'); rList.innerHTML = "";
-        player.roots.forEach(r => {
-            let s = document.createElement('div'); s.className = "word-chip chip-root"; s.innerText = r.word;
-            s.onclick = () => { forge.root = r.word; updateSlots(); };
-            rList.appendChild(s);
-        });
-        // Affixes
-        let aList = document.getElementById('list-affixes'); aList.innerHTML = "";
-        player.affixes.forEach(a => {
-            let s = document.createElement('div'); s.className = a.type==='pre'?"word-chip chip-pre":"word-chip chip-suf";
-            s.innerText = a.type==='pre' ? a.val+"-" : "-"+a.val;
-            s.onclick = () => { if(a.type==='pre') forge.pre=a.val; else forge.suf=a.val; updateSlots(); };
-            aList.appendChild(s);
-        });
-    };
-
-    function updateSlots() {
         document.getElementById('slot-pre').innerText = forge.pre || "[Pre]";
         document.getElementById('slot-root').innerText = forge.root || "[ROOT]";
         document.getElementById('slot-suf').innerText = forge.suf || "[Suf]";
-    }
-    window.clearSlot = function(t) { forge[t]=null; updateSlots(); };
+
+        let rList = document.getElementById('list-roots'); rList.innerHTML = "";
+        player.roots.forEach(r => {
+            let el = document.createElement('div'); el.className = "chip chip-root";
+            el.innerText = r; el.onclick = () => { forge.root = r; renderInv(); };
+            rList.appendChild(el);
+        });
+
+        let aList = document.getElementById('list-affixes'); aList.innerHTML = "";
+        player.affixes.forEach(a => {
+            let el = document.createElement('div'); el.className = "chip chip-affix";
+            el.innerText = "-" + a.val; el.onclick = () => { forge.suf = a.val; renderInv(); };
+            aList.appendChild(el);
+        });
+    };
+
+    window.clearSlot = (t) => { forge[t] = null; renderInv(); };
 
     window.runForge = async function() {
         if(!forge.root) return;
-        let w = ((forge.pre||"") + forge.root + (forge.suf||"")).toLowerCase();
-        let m = document.getElementById('forge-msg');
-        m.innerHTML = "Consulting Dictionary...";
+        let word = ((forge.pre||"") + forge.root + (forge.suf||"")).toLowerCase();
+        let msg = document.getElementById('forge-msg');
+        msg.innerText = "Checking Dictionary...";
         
         try {
-            let res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${w}`);
+            let res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
             if(!res.ok) throw new Error();
             let data = await res.json();
-            let def = data[0].meanings[0].definitions[0].definition;
-            m.innerHTML = `<span style="color:green">✨ ${w.toUpperCase()}</span><br><small>${def}</small>`;
+            msg.innerHTML = `<span style='color:green'>✨ ${word.toUpperCase()}</span>: ${data[0].meanings[0].definitions[0].definition}`;
             player.gems += 15; updateHud();
-            forge = {pre:null, root:null, suf:null}; updateSlots(); renderInv();
+            forge = {pre:null, root:null, suf:null}; renderInv();
         } catch(e) {
-            m.innerHTML = `<span style="color:red">❌ ${w} is not a word.</span>`;
+            msg.innerHTML = `<span style='color:red'>❌ ${word} is not a valid word.</span>`;
         }
     };
-
-    window.craft = function(item) {
-        if(item === 'heal' && player.resources.dirt >= 3) {
-            player.resources.dirt -= 3;
-            alert("Crafted Poultice!");
-        } else if (item === 'door') {
-            alert("Crafted Door!");
-        } else {
-            alert("Not enough resources!");
-        }
-        updateHud();
-    };
-
-    // --- 8. PHYSICS LOOP ---
-    const clock = new THREE.Clock();
-    
-    renderer.setAnimationLoop(() => {
-        const dt = Math.min(clock.getDelta(), 0.1);
-
-        if(controls.isLocked) {
-            velocity.x -= velocity.x * 10.0 * dt;
-            velocity.z -= velocity.z * 10.0 * dt;
-            velocity.y -= 9.8 * 15.0 * dt; // Gravity
-
-            const direction = new THREE.Vector3();
-            direction.z = Number(moveF) - Number(moveB);
-            direction.x = Number(moveR) - Number(moveL);
-            direction.normalize();
-
-            if (moveF || moveB) velocity.z -= direction.z * 150.0 * dt;
-            if (moveL || moveR) velocity.x -= direction.x * 150.0 * dt;
-
-            controls.moveRight(-velocity.x * dt);
-            controls.moveForward(-velocity.z * dt);
-            
-            // Collision Y
-            user.position.y += velocity.y * dt;
-            
-            // Simple Floor Check (prevent falling through world)
-            // Raycast down
-            const downRay = new THREE.Raycaster(user.position, new THREE.Vector3(0,-1,0), 0, 2);
-            const hits = downRay.intersectObjects(collisionBlocks);
-            
-            if(hits.length > 0) {
-                velocity.y = Math.max(0, velocity.y);
-                user.position.y = hits[0].point.y + 1.6; // Stand on block
-                canJump = true;
-            } else if (user.position.y < -20) {
-                user.position.set(0, 20, 0); // Respawn if fall
-                velocity.y = 0;
-            }
-        }
-
-        renderer.render(scene, camera);
-    });
 
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
