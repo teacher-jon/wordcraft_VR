@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WordCraft: Universal Edition</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Verdana', sans-serif; }
+        
+        /* DESKTOP UI OVERLAYS */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            border: 2px solid white; border-radius: 50%; transform: translate(-50%, -50%);
+            pointer-events: none; z-index: 10; display: none; /* Hidden until Desktop mode active */
+        }
+        
+        #desktop-inv {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 500px; padding: 20px; background: rgba(255,255,255,0.95);
+            border: 4px solid #5d4037; border-radius: 10px; display: none;
+            text-align: center; font-size: 16px; color: #333; z-index: 20;
+        }
+        
+        .inv-btn { margin-top: 15px; padding: 10px 20px; font-size: 16px; background: #27ae60; color: white; border: none; cursor: pointer; }
+        
+        #desktop-instructions {
+            position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5);
+            padding: 10px; pointer-events: none; display: none;
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="desktop-instructions">Click to Capture Mouse<br>WASD: Move | E: Inventory</div>
+    
+    <div id="desktop-inv">
+        <h2>🎒 Word Forge</h2>
+        <div id="d-inv-content">Inventory empty. Go mine!</div>
+        <div style="margin-top:10px; padding:10px; background:#eee; border:1px dashed #999;">
+            Forge: <span id="d-slot-root">[Root]</span> + <span id="d-slot-affix">[Affix]</span>
+        </div>
+        <button class="inv-btn" id="d-btn-forge">🔨 Forge Word</button>
+        <button class="inv-btn" style="background:#c0392b" onclick="toggleDesktopInv()">Close</button>
+    </div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
+    import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+    import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+    // --- 1. CONFIGURATION ---
+    const CHUNK_SIZE = 16;      
+    const RENDER_DISTANCE = 2;  
+    const DIG_DEPTH = 10;       
+
+    // --- 2. VOCABULARY DATA ---
+    const WORD_DATA = {
+        "dirt": { roots: ["play", "help", "walk"], affixes: ["s", "ed", "ing"] },
+        "stone": { roots: ["struct", "ject", "form"], affixes: ["re", "un", "tion"] },
+        "wood": { roots: ["grow", "leaf"], affixes: ["ness", "ful"] }
+    };
+    
+    let playerState = { gems: 0, roots: [], affixes: [] };
+    let forgeSlot = { root: null, affix: null };
+
+    // --- 3. SCENE SETUP ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 10, 40);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+    const user = new THREE.Group(); // The player rig
+    user.position.set(0, 5, 0);
+    user.add(camera);
+    scene.add(user);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    document.body.appendChild(VRButton.createButton(renderer));
+
+    const light = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
+    scene.add(light);
+
+    // --- 4. INFINITE TERRAIN ---
+    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    const materials = {
+        grass: new THREE.MeshLambertMaterial({ color: 0x2ecc71 }),
+        dirt: new THREE.MeshLambertMaterial({ color: 0x5d4037 }),
+        stone: new THREE.MeshLambertMaterial({ color: 0x7f8c8d }),
+        wood: new THREE.MeshLambertMaterial({ color: 0x8d6e63 }),
+        leaf: new THREE.MeshLambertMaterial({ color: 0x27ae60 })
+    };
+
+    let chunks = {}; 
+    let activeBlocks = []; 
+
+    function createBlock(x, y, z, type) {
+        const mesh = new THREE.Mesh(blockGeo, materials[type]);
+        mesh.position.set(x, y, z);
+        mesh.userData = { type: type, isBlock: true };
+        scene.add(mesh);
+        activeBlocks.push(mesh);
+        return mesh;
+    }
+
+    function generateChunk(cx, cz) {
+        const key = `${cx},${cz}`;
+        if (chunks[key]) return;
+        chunks[key] = [];
+        const startX = cx * CHUNK_SIZE;
+        const startZ = cz * CHUNK_SIZE;
+
+        for (let x = startX; x < startX + CHUNK_SIZE; x++) {
+            for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
+                let h = Math.floor(Math.sin(x * 0.1) * 2 + Math.cos(z * 0.1) * 2);
+                chunks[key].push(createBlock(x, h, z, 'grass'));
+                for(let d=1; d<=3; d++) chunks[key].push(createBlock(x, h-d, z, 'dirt'));
+                for(let d=4; d<=DIG_DEPTH; d++) chunks[key].push(createBlock(x, h-d, z, 'stone'));
+                if (Math.random() < 0.02) {
+                    chunks[key].push(createBlock(x, h+1, z, 'wood'));
+                    chunks[key].push(createBlock(x, h+2, z, 'leaf'));
+                }
+            }
+        }
+    }
+
+    function cullChunks(playerX, playerZ) {
+        const pCx = Math.floor(playerX / CHUNK_SIZE);
+        const pCz = Math.floor(playerZ / CHUNK_SIZE);
+        for (const key in chunks) {
+            const [cx, cz] = key.split(',').map(Number);
+            if (Math.sqrt((cx - pCx)**2 + (cz - pCz)**2) > RENDER_DISTANCE + 1) {
+                chunks[key].forEach(mesh => {
+                    scene.remove(mesh);
+                    const idx = activeBlocks.indexOf(mesh);
+                    if (idx > -1) activeBlocks.splice(idx, 1);
+                });
+                delete chunks[key];
+            }
+        }
+    }
+
+    function updateWorld() {
+        const px = user.position.x;
+        const pz = user.position.z;
+        const pCx = Math.floor(px / CHUNK_SIZE);
+        const pCz = Math.floor(pz / CHUNK_SIZE);
+        for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
+            for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
+                generateChunk(pCx + x, pCz + z);
+            }
+        }
+        cullChunks(px, pz);
+    }
+
+    // --- 5. HYBRID CONTROLS ---
+    
+    // A. DESKTOP CONTROLS
+    const desktopControls = new PointerLockControls(camera, document.body);
+    let moveF = false, moveB = false, moveL = false, moveR = false, canJump = false;
+    let isDesktopMode = false;
+
+    // Activate Desktop Mode on Click (if not in VR)
+    document.addEventListener('click', () => {
+        if (!renderer.xr.isPresenting && !desktopControls.isLocked) {
+            desktopControls.lock();
+            isDesktopMode = true;
+            document.getElementById('crosshair').style.display = 'block';
+            document.getElementById('desktop-instructions').style.display = 'block';
+        } else if (isDesktopMode && desktopControls.isLocked) {
+            // Mine block on click
+            fireRaycaster(camera); 
+        }
+    });
+
+    const onKeyDown = function (event) {
+        switch (event.code) {
+            case 'ArrowUp': case 'KeyW': moveF = true; break;
+            case 'ArrowLeft': case 'KeyA': moveL = true; break;
+            case 'ArrowDown': case 'KeyS': moveB = true; break;
+            case 'ArrowRight': case 'KeyD': moveR = true; break;
+            case 'Space': if (canJump) velocity.y += 10; canJump = false; break;
+            case 'KeyE': toggleDesktopInv(); break;
+        }
+    };
+    const onKeyUp = function (event) {
+        switch (event.code) {
+            case 'ArrowUp': case 'KeyW': moveF = false; break;
+            case 'ArrowLeft': case 'KeyA': moveL = false; break;
+            case 'ArrowDown': case 'KeyS': moveB = false; break;
+            case 'ArrowRight': case 'KeyD': moveR = false; break;
+        }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
+
+    // B. VR CONTROLS
+    let controller1, controller2;
+    controller1 = renderer.xr.getController(0); // Right
+    controller1.addEventListener('selectstart', () => {
+        // VR Trigger Pull
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controller1.matrixWorld);
+        const rayOrigin = new THREE.Vector3().setFromMatrixPosition(controller1.matrixWorld);
+        const rayDir = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+        
+        // Custom raycaster for VR controller
+        const vrRay = new THREE.Raycaster();
+        vrRay.set(rayOrigin, rayDir);
+        handleMining(vrRay, true);
+    });
+    user.add(controller1);
+    
+    // Laser Line for VR
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]), new THREE.LineBasicMaterial({ color: 0xff0000 }));
+    controller1.add(line);
+
+    // --- 6. SHARED MINING LOGIC ---
+    const raycaster = new THREE.Raycaster();
+    const center = new THREE.Vector2(0,0);
+
+    function fireRaycaster(sourceCamera) {
+        raycaster.setFromCamera(center, sourceCamera);
+        handleMining(raycaster, false);
+    }
+
+    function handleMining(raySource, isVR) {
+        const intersects = raySource.intersectObjects(activeBlocks);
+        if (intersects.length > 0 && intersects[0].distance < 6) {
+            const hit = intersects[0].object;
+            
+            // Check for 3D UI interaction (VR Only)
+            if (hit.userData.isButton) { runForge(); return; }
+
+            // Mine Block
+            scene.remove(hit);
+            activeBlocks.splice(activeBlocks.indexOf(hit), 1);
+            
+            // Loot
+            const type = hit.userData.type;
+            const loot = WORD_DATA[type];
+            if (loot && Math.random() < 0.6) {
+                if (Math.random() < 0.5) {
+                    let w = loot.roots[Math.floor(Math.random()*loot.roots.length)];
+                    playerState.roots.push(w);
+                    if(isVR) drawVRUI(`Found Root: ${w}`);
+                } else {
+                    let a = loot.affixes[Math.floor(Math.random()*loot.affixes.length)];
+                    playerState.affixes.push(a);
+                    if(isVR) drawVRUI(`Found Part: -${a}`);
+                }
+                playerState.gems += 5;
+                if(!isVR) updateDesktopInvUI(); // Update Desktop UI if open
+                if(isVR) drawVRUI(); // Update VR UI
+            }
+        }
+    }
+
+    // --- 7. DESKTOP UI LOGIC ---
+    window.toggleDesktopInv = function() {
+        if(!isDesktopMode) return;
+        const el = document.getElementById('desktop-inv');
+        if(el.style.display === 'block') {
+            el.style.display = 'none';
+            desktopControls.lock();
+        } else {
+            el.style.display = 'block';
+            desktopControls.unlock();
+            updateDesktopInvUI();
+        }
+    };
+
+    function updateDesktopInvUI() {
+        let html = `<b>Roots:</b> `;
+        playerState.roots.forEach(r => html += `<span onclick="setSlot('root','${r}')" style="cursor:pointer; color:blue">[${r}]</span> `);
+        html += `<br><br><b>Affixes:</b> `;
+        playerState.affixes.forEach(a => html += `<span onclick="setSlot('affix','${a}')" style="cursor:pointer; color:green">[-${a}]</span> `);
+        document.getElementById('d-inv-content').innerHTML = html;
+        document.getElementById('d-slot-root').innerText = forgeSlot.root || "[Root]";
+        document.getElementById('d-slot-affix').innerText = forgeSlot.affix || "[Affix]";
+    }
+
+    window.setSlot = function(type, val) {
+        forgeSlot[type] = val;
+        updateDesktopInvUI();
+    };
+
+    document.getElementById('d-btn-forge').addEventListener('click', runForge);
+
+    // --- 8. SHARED FORGE LOGIC ---
+    async function runForge() {
+        if (!forgeSlot.root) return;
+        let word = forgeSlot.root + (forgeSlot.affix || "");
+        
+        try {
+            let res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+            if (!res.ok) throw new Error();
+            let data = await res.json();
+            let def = data[0].meanings[0].definitions[0].definition;
+            alert(`SUCCESS! ${word.toUpperCase()}: ${def}`); // Works on Desktop
+            if(renderer.xr.isPresenting) drawVRUI(`Valid: ${word}`); // VR Feedback
+            
+            forgeSlot = { root: null, affix: null };
+            updateDesktopInvUI();
+        } catch (e) {
+            alert("Not a valid word.");
+        }
+    }
+
+    // --- 9. VR UI (Floating Tablet) ---
+    // Simple canvas texture for VR only
+    const canvasUI = document.createElement('canvas');
+    canvasUI.width = 512; canvasUI.height = 512;
+    const ctxUI = canvasUI.getContext('2d');
+    const uiTexture = new THREE.CanvasTexture(canvasUI);
+    const tabletMesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.02), new THREE.MeshBasicMaterial({ map: uiTexture }));
+    
+    // Attach to controller 2 (Left Hand) - Only add when entering VR
+    renderer.xr.addEventListener('sessionstart', () => {
+        const c2 = renderer.xr.getController(1);
+        tabletMesh.position.set(0.2, 0, 0);
+        tabletMesh.rotation.x = -Math.PI / 4;
+        c2.add(tabletMesh);
+        user.add(c2);
+        drawVRUI("Look here for Inventory");
+    });
+
+    function drawVRUI(msg = "") {
+        ctxUI.fillStyle = 'white'; ctxUI.fillRect(0,0,512,512);
+        ctxUI.fillStyle = 'black'; ctxUI.font = '30px Arial';
+        ctxUI.fillText("VR Inventory", 20, 50);
+        ctxUI.fillText(`Gems: ${playerState.gems}`, 20, 100);
+        ctxUI.fillStyle = 'blue';
+        let y = 150;
+        playerState.roots.slice(-3).forEach(r => { ctxUI.fillText(r, 20, y); y+=40; });
+        ctxUI.fillStyle = 'red';
+        ctxUI.fillText(msg, 20, 400);
+        uiTexture.needsUpdate = true;
+    }
+
+    // --- 10. GAME LOOP ---
+    const velocity = new THREE.Vector3();
+    const clock = new THREE.Clock();
+
+    renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+
+        // 1. Desktop Movement (Physics)
+        if (desktopControls.isLocked) {
+            velocity.x -= velocity.x * 10.0 * dt;
+            velocity.z -= velocity.z * 10.0 * dt;
+            velocity.y -= 9.8 * 10.0 * dt; 
+            
+            const direction = new THREE.Vector3();
+            direction.z = Number(moveF) - Number(moveB);
+            direction.x = Number(moveR) - Number(moveL);
+            direction.normalize();
+
+            if (moveF || moveB) velocity.z -= direction.z * 100.0 * dt;
+            if (moveL || moveR) velocity.x -= direction.x * 100.0 * dt;
+
+            desktopControls.moveRight(-velocity.x * dt);
+            desktopControls.moveForward(-velocity.z * dt);
+            user.position.y += (velocity.y * dt);
+            
+            // Floor Collision (Simple)
+            if (user.position.y < 2) {
+                velocity.y = 0;
+                user.position.y = 2;
+                canJump = true;
+            }
+        } 
+        
+        // 2. VR Movement (Thumbsticks)
+        else if (renderer.xr.isPresenting) {
+            const session = renderer.xr.getSession();
+            if (session) {
+                for (const source of session.inputSources) {
+                    if (source.gamepad) {
+                        const axes = source.gamepad.axes;
+                        if (Math.abs(axes[3]) > 0.1 || Math.abs(axes[2]) > 0.1) {
+                            const speed = 5 * dt;
+                            const dx = axes[2] * speed; 
+                            const dz = axes[3] * speed;
+                            user.position.x += dx * Math.cos(user.rotation.y) + dz * Math.sin(user.rotation.y);
+                            user.position.z += dz * Math.cos(user.rotation.y) - dx * Math.sin(user.rotation.y);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Infinite Generation
+        updateWorld();
+
+        renderer.render(scene, camera);
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+</script>
+</body>
+</html>
