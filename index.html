@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>WordCraft 3D: Ultimate Fix</title>
+    <title>WordCraft: Voxel Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; font-family: 'Courier New', monospace; }
         
         #loading {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: white; font-size: 24px; font-weight: bold; background: rgba(0,0,0,0.8); padding: 20px;
+            pointer-events: none; z-index: 999;
         }
 
         #desktop-ui {
@@ -30,7 +31,7 @@
 </head>
 <body>
 
-<div id="loading">PROCESSING TEXTURES...</div>
+<div id="loading">VOXELIZING SPRITES...</div>
 
 <div id="desktop-ui">
     <div id="crosshair"></div>
@@ -44,272 +45,264 @@
 
     // --- 1. CONFIG ---
     const STATE = { hp: 3, gems: 0, roots: [], affixes: [], inventoryOpen: false, forge: { pre: null, root: null, suf: null }, msg: "" };
-    const LOOT = {
-        "dirt": { roots: ["play", "help", "walk"], affixes: ["ed", "ing"] },
-        "stone": { roots: ["struct", "ject"], affixes: ["re", "un"] },
-        "wood": { roots: ["grow", "leaf"], affixes: ["ness", "ful"] }
-    };
+    const LOOT = { "dirt": { roots: ["play", "walk"], affixes: ["ed"] }, "stone": { roots: ["struct"], affixes: ["re"] }, "wood": { roots: ["leaf"], affixes: ["ness"] } };
 
-    // --- 2. TEXTURE PROCESSOR (The Fixer) ---
-    // This removes white pixels and splits the image into individual textures
-    function processImage(imgUrl, rows, cols) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.src = imgUrl;
-            img.onload = () => {
-                const textures = [];
-                const w = img.width / cols;
-                const h = img.height / rows;
+    // --- 2. VOXELIZER ENGINE ---
+    // This function reads an image and turns pixels into 3D Cubes
+    function createVoxelMesh(image, col, row, totalCols, totalRows) {
+        const size = 32; // Resolution of analysis
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw the specific sprite frame to canvas
+        const sw = image.width / totalCols;
+        const sh = image.height / totalRows;
+        ctx.drawImage(image, col * sw, row * sh, sw, sh, 0, 0, size, size);
+        
+        const imgData = ctx.getImageData(0, 0, size, size).data;
+        const geometry = new THREE.BoxGeometry(1/size, 1/size, 1/size); // Tiny pixel cube
+        const material = new THREE.MeshStandardMaterial({ vertexColors: true });
+        
+        const group = new THREE.Group();
+        
+        // Loop through pixels
+        for(let y=0; y<size; y++) {
+            for(let x=0; x<size; x++) {
+                const i = (y * size + x) * 4;
+                const r = imgData[i];
+                const g = imgData[i+1];
+                const b = imgData[i+2];
+                const a = imgData[i+3];
 
-                for(let r=0; r<rows; r++) {
-                    for(let c=0; c<cols; c++) {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 64; canvas.height = 64;
-                        const ctx = canvas.getContext('2d');
-                        
-                        // Draw slice
-                        ctx.drawImage(img, c*w, r*h, w, h, 0, 0, 64, 64);
-                        
-                        // REMOVE WHITE BACKGROUND
-                        const imgData = ctx.getImageData(0,0,64,64);
-                        const data = imgData.data;
-                        for(let i=0; i<data.length; i+=4) {
-                            // If pixel is very bright (white), make it transparent
-                            if(data[i]>240 && data[i+1]>240 && data[i+2]>240) {
-                                data[i+3] = 0; // Alpha = 0
-                            }
-                        }
-                        ctx.putImageData(imgData, 0, 0);
-
-                        const tex = new THREE.CanvasTexture(canvas);
-                        tex.magFilter = THREE.NearestFilter;
-                        tex.minFilter = THREE.NearestFilter;
-                        tex.colorSpace = THREE.SRGBColorSpace;
-                        textures.push(tex);
-                    }
+                // If pixel is not transparent and not white background
+                if(a > 0 && !(r>240 && g>240 && b>240)) {
+                    const cube = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), new THREE.MeshStandardMaterial({ color: `rgb(${r},${g},${b})` }));
+                    // Flip Y because canvas is top-down but 3D is bottom-up
+                    cube.position.set((x - size/2) * 0.04, ((size - y) - size/2) * 0.04, 0);
+                    group.add(cube);
                 }
-                resolve(textures);
-            };
-        });
+            }
+        }
+        return group;
     }
 
-    // --- 3. ASSET LOADING ---
+    // --- 3. ASSETS ---
     const MATS = {};
-    let matBat, matSlime;
+    const MODELS = {};
 
-    async function loadAssets() {
-        // Process Tiles (1 Column, 5 Rows)
-        const tileTexs = await processImage('assets/tiles.png', 5, 1);
-        MATS['grass'] = new THREE.MeshLambertMaterial({ map: tileTexs[0] });
-        MATS['dirt']  = new THREE.MeshLambertMaterial({ map: tileTexs[1] });
-        MATS['stone'] = new THREE.MeshLambertMaterial({ map: tileTexs[2] });
-        MATS['wood']  = new THREE.MeshLambertMaterial({ map: tileTexs[3] });
-        MATS['leaf']  = new THREE.MeshLambertMaterial({ map: tileTexs[4], transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    async function loadGame() {
+        const loader = new THREE.TextureLoader();
+        
+        // 1. Load World Textures (Standard UV Mapping)
+        const tiles = await loader.loadAsync('assets/tiles.png');
+        tiles.magFilter = THREE.NearestFilter;
+        tiles.colorSpace = THREE.SRGBColorSpace;
 
-        // Process Chars (3 Columns, 3 Rows)
-        const charTexs = await processImage('assets/chars.png', 3, 3);
-        // Bat is usually at index 4 (Row 1, Col 1), Slime at index 8 (Row 2, Col 2) - Adjust based on your sheet
-        // Based on typical spritesheet logic:
-        matBat = new THREE.MeshBasicMaterial({ map: charTexs[4], transparent: true, side: THREE.DoubleSide }); 
-        matSlime = new THREE.MeshBasicMaterial({ map: charTexs[8], transparent: true, side: THREE.DoubleSide });
+        function getBlockMat(index) {
+            const tex = tiles.clone();
+            tex.magFilter = THREE.NearestFilter;
+            tex.repeat.set(1, 0.2); // 1/5th of image
+            tex.offset.y = 1 - ((index + 1) * 0.2);
+            return new THREE.MeshLambertMaterial({ map: tex });
+        }
 
-        document.getElementById('loading').style.display = 'none';
-        initGame();
+        MATS['grass'] = getBlockMat(0);
+        MATS['dirt']  = getBlockMat(1);
+        MATS['stone'] = getBlockMat(2);
+        MATS['wood']  = getBlockMat(3);
+        MATS['leaf']  = getBlockMat(4);
+
+        // 2. Load Characters and Voxelize them
+        const charImg = new Image();
+        charImg.src = 'assets/chars.png';
+        charImg.onload = () => {
+            // Create 3D Voxel Models from the 2D sprites
+            MODELS['bat'] = createVoxelMesh(charImg, 1, 1, 3, 3); // Col 1, Row 1
+            MODELS['slime'] = createVoxelMesh(charImg, 2, 2, 3, 3); // Col 2, Row 2
+            
+            document.getElementById('loading').style.display = 'none';
+            init();
+        };
     }
 
-    // --- 4. SCENE SETUP ---
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 10, 40);
-
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
-    const dolly = new THREE.Group();
-    dolly.position.set(0, 5, 0);
-    dolly.add(camera);
-    scene.add(dolly);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
-    document.body.appendChild(renderer.domElement);
-    document.body.appendChild(VRButton.createButton(renderer));
-
-    const light = new THREE.DirectionalLight(0xffffff, 1.0);
-    light.position.set(10, 20, 10);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-    // --- 5. WORLD GEN ---
+    // --- 4. SCENE ---
+    let scene, camera, renderer, dolly;
     const activeBlocks = [];
-    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    const enemies = [];
 
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 40);
+
+        camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
+        dolly = new THREE.Group();
+        dolly.position.set(0, 5, 0);
+        dolly.add(camera);
+        scene.add(dolly);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        document.body.appendChild(renderer.domElement);
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.2);
+        light.position.set(10, 20, 5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+        // Generate World
+        for(let x=-6; x<6; x++) {
+            for(let z=-6; z<6; z++) {
+                let h = Math.floor(Math.sin(x*0.3)*2 + Math.cos(z*0.3)*2);
+                createBlock(x, h, z, 'grass');
+                createBlock(x, h-1, z, 'dirt');
+                for(let d=2; d<5; d++) createBlock(x, h-d, z, 'stone');
+                if(Math.random()<0.05) { // Tree
+                     createBlock(x, h+1, z, 'wood');
+                     createBlock(x, h+2, z, 'wood');
+                     createBlock(x, h+3, z, 'leaf');
+                }
+            }
+        }
+
+        // Spawn Loop
+        setInterval(spawnEnemy, 3000);
+        
+        setupControls();
+        renderer.setAnimationLoop(render);
+    }
+
+    const boxGeo = new THREE.BoxGeometry(1,1,1);
     function createBlock(x, y, z, type) {
-        const mesh = new THREE.Mesh(blockGeo, MATS[type] || MATS['dirt']);
+        const mesh = new THREE.Mesh(boxGeo, MATS[type] || MATS['dirt']);
         mesh.position.set(x, y, z);
         mesh.userData = { type: type };
         scene.add(mesh);
         activeBlocks.push(mesh);
     }
 
-    function initGame() {
-        // Generate Terrain
-        for(let x=-8; x<8; x++) {
-            for(let z=-8; z<8; z++) {
-                let h = Math.floor(Math.sin(x*0.2)*2 + Math.cos(z*0.2)*2);
-                createBlock(x, h, z, 'grass');
-                createBlock(x, h-1, z, 'dirt');
-                for(let d=2; d<5; d++) createBlock(x, h-d, z, 'stone');
-                
-                if(Math.random() < 0.05) {
-                    createBlock(x, h+1, z, 'wood');
-                    createBlock(x, h+2, z, 'wood');
-                    createBlock(x, h+3, z, 'leaf');
-                    createBlock(x+1, h+2, z, 'leaf');
-                    createBlock(x-1, h+2, z, 'leaf');
-                    createBlock(x, h+2, z+1, 'leaf');
-                    createBlock(x, h+2, z-1, 'leaf');
-                }
-            }
-        }
-        
-        // Spawn Enemies loop
-        setInterval(spawnEnemy, 3000);
-    }
-
-    // --- 6. ENEMIES ---
-    const enemies = [];
-    const enemyGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
-
     function spawnEnemy() {
-        if(enemies.length >= 5) return;
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 5 + Math.random() * 5;
-        const x = dolly.position.x + Math.cos(angle) * dist;
-        const z = dolly.position.z + Math.sin(angle) * dist;
+        if(enemies.length > 5) return;
         
-        const type = Math.random()>0.5 ? 'bat' : 'slime';
-        const mat = type === 'bat' ? matBat : matSlime;
+        const type = Math.random() > 0.5 ? 'bat' : 'slime';
+        if(!MODELS[type]) return;
 
-        const e = new THREE.Mesh(enemyGeo, mat);
-        e.position.set(x, 10, z);
-        e.userData = { dy: 0 };
-        scene.add(e);
-        enemies.push(e);
+        // Clone the voxel model
+        const enemy = MODELS[type].clone();
+        
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 6;
+        enemy.position.set(
+            dolly.position.x + Math.cos(angle) * dist,
+            8,
+            dolly.position.z + Math.sin(angle) * dist
+        );
+        
+        // Scale it up so visible
+        enemy.scale.set(2, 2, 2);
+        enemy.userData = { dy: 0, hp: 2 };
+        scene.add(enemy);
+        enemies.push(enemy);
     }
 
-    function updateEnemies(dt) {
+    // --- 5. GAME LOOP ---
+    const clock = new THREE.Clock();
+
+    function render() {
+        const dt = clock.getDelta();
+
+        // Enemy Logic
         enemies.forEach((e, i) => {
             const dir = new THREE.Vector3().subVectors(dolly.position, e.position).normalize();
-            e.position.add(dir.multiplyScalar(2 * dt));
+            e.position.add(dir.multiplyScalar(2 * dt)); // Chase
+            e.lookAt(dolly.position); // Face player
+            
+            // Bounce
             e.userData.dy += dt * 5;
             e.position.y += Math.sin(e.userData.dy) * 0.01;
-            e.lookAt(dolly.position);
 
-            if(e.position.distanceTo(dolly.position) < 1.0) {
+            if(e.position.distanceTo(dolly.position) < 1) {
                 STATE.hp--;
                 document.getElementById('ui-hp').innerText = STATE.hp;
                 scene.remove(e);
                 enemies.splice(i, 1);
-                scene.background = new THREE.Color(0xff0000);
-                setTimeout(()=>scene.background=new THREE.Color(0x87CEEB), 100);
+                scene.background = new THREE.Color(0xff0000); // Hurt flash
+                setTimeout(()=>scene.background = new THREE.Color(0x87CEEB), 100);
             }
         });
-    }
 
-    // --- 7. CONTROLS ---
-    const controls = new PointerLockControls(camera, document.body);
-    const keys = { w:false, a:false, s:false, d:false };
-    
-    document.addEventListener('keydown', e => {
-        if(e.key==='w') keys.w=true; if(e.key==='a') keys.a=true; 
-        if(e.key==='s') keys.s=true; if(e.key==='d') keys.d=true;
-    });
-    document.addEventListener('keyup', e => {
-        if(e.key==='w') keys.w=false; if(e.key==='a') keys.a=false; 
-        if(e.key==='s') keys.s=false; if(e.key==='d') keys.d=false;
-    });
-    
-    // RAYCASTING (Mining)
-    const raycaster = new THREE.Raycaster();
-    
-    document.addEventListener('click', () => {
-        if(!renderer.xr.isPresenting) {
-            if(!controls.isLocked) controls.lock();
-            else attemptMine();
-        }
-    });
-
-    function attemptMine() {
-        // Raycast from Camera Center
-        raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
-        const hits = raycaster.intersectObjects(activeBlocks);
-        
-        if(hits.length > 0 && hits[0].distance < 6) {
-            const hit = hits[0].object;
-            
-            // Effect: Flash block
-            hit.material.color.setHex(0xff0000);
-            
-            setTimeout(() => {
-                scene.remove(hit);
-                activeBlocks.splice(activeBlocks.indexOf(hit), 1);
-                
-                // Loot Logic
-                const t = hit.userData.type;
-                if(LOOT[t]) {
-                    STATE.gems++;
-                    document.getElementById('ui-gems').innerText = STATE.gems;
-                }
-            }, 100);
-        }
-    }
-
-    // VR CONTROLLERS
-    const controller1 = renderer.xr.getController(0);
-    controller1.addEventListener('selectstart', attemptMineVR); // Trigger
-    dolly.add(controller1);
-
-    function attemptMineVR(e) {
-        const c = e.target;
-        const mat = new THREE.Matrix4().extractRotation(c.matrixWorld);
-        const dir = new THREE.Vector3(0,0,-1).applyMatrix4(mat);
-        const origin = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
-        
-        raycaster.set(origin, dir);
-        const hits = raycaster.intersectObjects(activeBlocks);
-        if(hits.length > 0 && hits[0].distance < 6) {
-             const hit = hits[0].object;
-             scene.remove(hit);
-             activeBlocks.splice(activeBlocks.indexOf(hit), 1);
-             STATE.gems++;
-             document.getElementById('ui-gems').innerText = STATE.gems;
-        }
-    }
-
-    // --- 8. LOOP ---
-    const clock = new THREE.Clock();
-    
-    renderer.setAnimationLoop(() => {
-        const dt = clock.getDelta();
-        updateEnemies(dt);
-
-        // Movement
+        // Desktop Move
         if(!renderer.xr.isPresenting && controls.isLocked) {
-            const dir = new THREE.Vector3();
-            camera.getWorldDirection(dir); dir.y=0; dir.normalize();
-            const side = new THREE.Vector3().crossVectors(camera.up, dir).normalize();
+            const d = new THREE.Vector3();
+            camera.getWorldDirection(d); d.y=0; d.normalize();
+            const s = new THREE.Vector3().crossVectors(camera.up, d).normalize();
             const spd = 5 * dt;
-            if(keys.w) dolly.position.add(dir.multiplyScalar(spd));
-            if(keys.s) dolly.position.add(dir.multiplyScalar(-spd));
-            if(keys.a) dolly.position.add(side.multiplyScalar(spd));
-            if(keys.d) dolly.position.add(side.multiplyScalar(-spd));
+            if(keys.w) dolly.position.add(d.multiplyScalar(spd));
+            if(keys.s) dolly.position.add(d.multiplyScalar(-spd));
+            if(keys.a) dolly.position.add(s.multiplyScalar(spd));
+            if(keys.d) dolly.position.add(s.multiplyScalar(-spd));
         }
 
         renderer.render(scene, camera);
-    });
+    }
 
-    // START
-    loadAssets();
+    // --- 6. CONTROLS ---
+    let controls;
+    const keys = { w:false, a:false, s:false, d:false };
+    const raycaster = new THREE.Raycaster();
+
+    function setupControls() {
+        controls = new PointerLockControls(camera, document.body);
+        
+        document.addEventListener('keydown', e => {
+            if(e.key==='w') keys.w=true; if(e.key==='a') keys.a=true;
+            if(e.key==='s') keys.s=true; if(e.key==='d') keys.d=true;
+        });
+        document.addEventListener('keyup', e => {
+            if(e.key==='w') keys.w=false; if(e.key==='a') keys.a=false;
+            if(e.key==='s') keys.s=false; if(e.key==='d') keys.d=false;
+        });
+        
+        document.addEventListener('click', () => {
+            if(!renderer.xr.isPresenting) {
+                if(!controls.isLocked) controls.lock();
+                else mine();
+            }
+        });
+
+        // VR Controllers
+        const c1 = renderer.xr.getController(0);
+        c1.addEventListener('selectstart', mineVR);
+        dolly.add(c1);
+    }
+
+    function mine() {
+        raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+        checkHit(raycaster);
+    }
+
+    function mineVR(e) {
+        const c = e.target;
+        const mat = new THREE.Matrix4().extractRotation(c.matrixWorld);
+        raycaster.set(c.position, new THREE.Vector3(0,0,-1).applyMatrix4(mat));
+        checkHit(raycaster);
+    }
+
+    function checkHit(ray) {
+        const hits = ray.intersectObjects(activeBlocks);
+        if(hits.length > 0 && hits[0].distance < 6) {
+            const hit = hits[0].object;
+            scene.remove(hit);
+            activeBlocks.splice(activeBlocks.indexOf(hit), 1);
+            STATE.gems++;
+            document.getElementById('ui-gems').innerText = STATE.gems;
+        }
+    }
+
+    loadGame(); // START
 
 </script>
 </body>
