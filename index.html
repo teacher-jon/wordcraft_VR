@@ -1,71 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WordCraft 3D: Final Texture Fix</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+        
+        /* DESKTOP HUD STYLES */
+        #desktop-ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        #crosshair {
+            width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+        }
+        #hud-info {
+            position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px 0 #000;
+            font-size: 20px; font-weight: bold;
+        }
+        #instructions {
+            position: absolute; bottom: 20px; left: 20px; color: #ddd; font-size: 14px;
+            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+<div id="desktop-ui">
+    <div id="crosshair"></div>
+    <div id="hud-info">💎 Fragments: <span id="ui-gems">0</span> | HP: <span id="ui-hp">3</span></div>
+    <div id="instructions">
+        <b>WASD</b> Move | <b>Click</b> Mine | <b>E</b> Inventory | <b>VR:</b> Trigger Mine / Grip Inv
+    </div>
+</div>
+
 <script type="module">
     import * as THREE from 'three';
     import { VRButton } from 'three/addons/webxr/VRButton.js';
     import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-    // --- 1. GAME STATE & DATA ---
+    // --- 1. GAME DATA ---
     const STATE = {
         hp: 3, maxHp: 3, gems: 0,
         roots: [], affixes: [],
         inventoryOpen: false,
-        activeBlock: 'wood',
         forge: { pre: null, root: null, suf: null },
-        msg: "Forge a word to begin!"
+        msg: "Forge a word!"
     };
 
-    const LOOT_TABLE = {
-        "dirt": { roots: ["play", "help", "walk", "look", "jump"], affixes: ["s", "ed", "ing"] },
-        "stone": { roots: ["struct", "ject", "form", "port"], affixes: ["re", "un", "tion"] },
-        "wood": { roots: ["grow", "leaf", "tree"], affixes: ["ness", "ful", "less"] }
+    const LOOT = {
+        "dirt": { roots: ["play", "help", "walk"], affixes: ["ed", "ing"] },
+        "stone": { roots: ["struct", "ject"], affixes: ["re", "un"] },
+        "wood": { roots: ["grow", "leaf"], affixes: ["ness", "ful"] }
     };
 
-    // --- 2. ASSET LOADING (FIXED TEXTURES) ---
-    const textureLoader = new THREE.TextureLoader();
-    
-    // Load TILES
-    const tilesTex = textureLoader.load('assets/tiles.png');
-    tilesTex.colorSpace = THREE.SRGBColorSpace; // FIX: Makes colors look correct
-    tilesTex.magFilter = THREE.NearestFilter;   // FIX: Keeps pixels sharp (no blur)
-    tilesTex.minFilter = THREE.NearestFilter;
-
-    // Load CHARS
-    const charsTex = textureLoader.load('assets/chars.png');
-    charsTex.colorSpace = THREE.SRGBColorSpace;
-    charsTex.magFilter = THREE.NearestFilter;
-    charsTex.minFilter = THREE.NearestFilter;
-
-    // TEXTURE HELPER: Creates a material for a specific slice of your tiles.png
-    function getMat(rowIndex) {
-        const tex = tilesTex.clone(); // Clone so we can offset this specific block
-        tex.magFilter = THREE.NearestFilter;
+    // --- 2. TEXTURE FIXERS (The Digital Scissors) ---
+    // This cuts the barcode lines off your blocks
+    function cutTexture(image, row, totalRows) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 64; 
+        const ctx = canvas.getContext('2d');
+        const h = image.height / totalRows;
+        const y = row * h;
+        ctx.drawImage(image, 0, y, image.width, h, 0, 0, 64, 64);
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter; // Sharp Pixels
         tex.minFilter = THREE.NearestFilter;
         tex.colorSpace = THREE.SRGBColorSpace;
-        
-        // Assuming 5 rows in your image (Grass, Dirt, Stone, Wood, Leaves)
-        // Adjust '0.2' if you have a different number of rows (1 / num_rows)
-        tex.repeat.set(1, 0.2); 
-        tex.offset.y = 1 - ((rowIndex + 1) * 0.2); 
-        
-        return new THREE.MeshLambertMaterial({ map: tex });
+        return tex;
     }
 
-    const MATERIALS = {
-        'grass': getMat(0), // Row 1
-        'dirt': getMat(1),  // Row 2
-        'stone': getMat(2), // Row 3
-        'wood': getMat(3),  // Row 4
-        'leaves': new THREE.MeshLambertMaterial({ color: 0x228b22 }) // Fallback color
-    };
+    // This cuts the enemies out so they aren't white squares
+    function cutSprite(image, col, row) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64; canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const w = image.width / 3;
+        const h = image.height / 3;
+        ctx.drawImage(image, col * w, row * h, w, h, 0, 0, 64, 64);
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+    }
 
-    // --- 3. SCENE & WORLD ---
+    // --- 3. ASSET LOADING ---
+    const matCache = {}; 
+    const imgLoader = new THREE.ImageLoader();
+
+    // Load TILES
+    imgLoader.load('assets/tiles.png', (image) => {
+        // We cut the image into 5 strips
+        matCache['grass'] = new THREE.MeshLambertMaterial({ map: cutTexture(image, 0, 5) });
+        matCache['dirt']  = new THREE.MeshLambertMaterial({ map: cutTexture(image, 1, 5) });
+        matCache['stone'] = new THREE.MeshLambertMaterial({ map: cutTexture(image, 2, 5) });
+        matCache['wood']  = new THREE.MeshLambertMaterial({ map: cutTexture(image, 3, 5) });
+        matCache['leaf']  = new THREE.MeshLambertMaterial({ map: cutTexture(image, 4, 5), transparent:true, opacity:0.9 });
+        initWorld(); // Start world generation only after textures load
+    });
+
+    // Load CHARS
+    let matBat, matSlime;
+    imgLoader.load('assets/chars.png', (image) => {
+        // We cut out the Bat and Slime faces
+        matBat = new THREE.MeshBasicMaterial({ map: cutSprite(image, 1, 1), transparent: true, side: THREE.DoubleSide });
+        matSlime = new THREE.MeshBasicMaterial({ map: cutSprite(image, 2, 2), transparent: true, side: THREE.DoubleSide });
+    });
+
+    // --- 4. SCENE SETUP ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
     scene.fog = new THREE.Fog(0x87CEEB, 15, 40);
 
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
     const dolly = new THREE.Group();
-    dolly.position.set(0, 8, 0);
+    dolly.position.set(0, 10, 0);
     dolly.add(camera);
     scene.add(dolly);
 
@@ -76,102 +138,66 @@
     document.body.appendChild(VRButton.createButton(renderer));
 
     // LIGHTING
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    sunLight.position.set(10, 20, 10);
-    sunLight.castShadow = true;
-    scene.add(sunLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(10, 20, 10);
+    scene.add(sun);
 
-    // --- 4. VOXEL WORLD GENERATION ---
+    // --- 5. VOXEL WORLD ---
     const activeBlocks = [];
-    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
 
     function createBlock(x, y, z, type) {
-        // If it's the top layer of dirt, switch to grass texture
-        let finalType = type;
-        if(type === 'dirt' && !checkBlockAbove(x, y, z)) {
-            finalType = 'grass';
-        }
-
-        const mat = MATERIALS[finalType] || MATERIALS['dirt'];
-        const mesh = new THREE.Mesh(blockGeo, mat);
+        // Use loaded material or fallback to gray if not loaded yet
+        const mat = matCache[type] || new THREE.MeshLambertMaterial({color:0x555555});
+        const mesh = new THREE.Mesh(geometry, mat);
         mesh.position.set(x, y, z);
         mesh.userData = { type: type, isBlock: true };
         scene.add(mesh);
         activeBlocks.push(mesh);
     }
 
-    // Helper to check if a block exists (for grass logic)
-    function checkBlockAbove(x, y, z) {
-        return activeBlocks.some(b => b.position.x === x && b.position.y === y+1 && b.position.z === z);
-    }
-
-    function generateChunk(cx, cz) {
-        for(let x = cx*16; x < (cx+1)*16; x++) {
-            for(let z = cz*16; z < (cz+1)*16; z++) {
-                let h = Math.floor(Math.sin(x*0.1)*3 + Math.cos(z*0.1)*3);
-                
-                // Top Layer
-                createBlock(x, h, z, 'dirt'); // Will turn to grass automatically
+    function initWorld() {
+        for(let x=-8; x<8; x++) {
+            for(let z=-8; z<8; z++) {
+                let h = Math.floor(Math.sin(x*0.2)*2 + Math.cos(z*0.2)*2);
+                createBlock(x, h, z, 'grass');
                 createBlock(x, h-1, z, 'dirt');
-                
-                // Deep Stone
-                for(let d=2; d<6; d++) createBlock(x, h-d, z, 'stone');
+                for(let d=2; d<5; d++) createBlock(x, h-d, z, 'stone');
                 
                 // Trees
-                if(Math.random() < 0.02) {
+                if(Math.random() < 0.05) {
                     createBlock(x, h+1, z, 'wood');
                     createBlock(x, h+2, z, 'wood');
-                    createBlock(x, h+3, z, 'leaves');
-                    createBlock(x+1, h+2, z, 'leaves');
-                    createBlock(x-1, h+2, z, 'leaves');
-                    createBlock(x, h+2, z+1, 'leaves');
-                    createBlock(x, h+2, z-1, 'leaves');
+                    createBlock(x, h+3, z, 'leaf');
+                    createBlock(x+1, h+2, z, 'leaf');
+                    createBlock(x-1, h+2, z, 'leaf');
+                    createBlock(x, h+2, z+1, 'leaf');
+                    createBlock(x, h+2, z-1, 'leaf');
                 }
             }
         }
     }
-    generateChunk(0, 0);
 
-    // --- 5. 3D ENEMIES (CUBES NOT SPRITES) ---
+    // --- 6. 3D ENEMIES (CUBES) ---
     const enemies = [];
-    
-    // Create materials for the enemy cubes
-    // We crop the chars.png to find the Bat or Slime face
-    function getCharMat(col, row, colorHex) {
-        const tex = charsTex.clone();
-        tex.magFilter = THREE.NearestFilter;
-        // Assuming chars.png is a 3x3 grid
-        tex.repeat.set(0.33, 0.33); 
-        tex.offset.set(col * 0.33, 1 - (row+1) * 0.33);
-        
-        return new THREE.MeshStandardMaterial({ 
-            map: tex, 
-            color: colorHex, // Tint the cube
-            transparent: true 
-        });
-    }
-
-    const matSlime = getCharMat(2, 2, 0x00ff00); // Green Tint
-    const matBat = getCharMat(1, 1, 0xff0000);   // Red Tint
-    const enemyGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8); // Slightly smaller than blocks
+    const enemyGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7); // Smaller cube
 
     function spawnEnemy() {
+        if(!matBat || !matSlime) return;
+
         const angle = Math.random() * Math.PI * 2;
-        const dist = 8 + Math.random() * 5;
+        const dist = 6 + Math.random() * 4;
         const x = dolly.position.x + Math.cos(angle) * dist;
         const z = dolly.position.z + Math.sin(angle) * dist;
         
         const type = Math.random() > 0.5 ? 'bat' : 'slime';
         const mat = type === 'bat' ? matBat : matSlime;
         
-        // NEW: Creating a Mesh (Cube) instead of a Sprite (Paper)
+        // Create 3D Cube for enemy
         const enemy = new THREE.Mesh(enemyGeo, mat);
-        
-        // Position it high so it falls/floats
-        enemy.position.set(x, 10, z);
-        enemy.userData = { type: type, hp: 2, dy: 0 }; // dy for bouncing
+        enemy.position.set(x, 10, z); 
+        enemy.userData = { type: type, dy: 0 };
         
         scene.add(enemy);
         enemies.push(enemy);
@@ -179,31 +205,26 @@
 
     function updateEnemies(dt) {
         enemies.forEach((e, i) => {
-            // Move toward player
+            // Chase Player
             const dir = new THREE.Vector3().subVectors(dolly.position, e.position).normalize();
-            e.position.add(dir.multiplyScalar(2 * dt)); 
+            e.position.add(dir.multiplyScalar(2 * dt));
             
-            // "Bounce" animation
+            // Bounce Animation
             e.userData.dy += dt * 5;
             e.position.y += Math.sin(e.userData.dy) * 0.02;
+            
+            e.lookAt(dolly.position); // Always face player
 
-            // Face the player
-            e.lookAt(dolly.position);
-
-            // Collision
             if(e.position.distanceTo(dolly.position) < 1.0) {
                 STATE.hp--;
                 document.getElementById('ui-hp').innerText = STATE.hp;
                 scene.remove(e);
                 enemies.splice(i, 1);
-                // Flash Red Screen
-                scene.background = new THREE.Color(0xff0000);
-                setTimeout(() => scene.background = new THREE.Color(0x87CEEB), 100);
             }
         });
     }
 
-    // --- 6. UI SYSTEM (CANVAS TABLET) ---
+    // --- 7. UI (CANVAS TABLET) ---
     const uiCanvas = document.createElement('canvas');
     uiCanvas.width = 1024; uiCanvas.height = 768;
     const uiCtx = uiCanvas.getContext('2d');
@@ -214,92 +235,72 @@
     scene.add(uiPlane);
 
     let uiHitboxes = [];
-
     function drawUI() {
-        uiCtx.fillStyle = "#f3e5f5";
-        uiCtx.fillRect(0, 0, 1024, 768);
-        uiCtx.lineWidth = 15; uiCtx.strokeStyle = "#5d4037"; uiCtx.strokeRect(0, 0, 1024, 768);
-        uiHitboxes = [];
+        uiCtx.fillStyle = "#f3e5f5"; uiCtx.fillRect(0,0,1024,768);
+        uiCtx.lineWidth=15; uiCtx.strokeStyle="#5d4037"; uiCtx.strokeRect(0,0,1024,768);
+        uiHitboxes=[];
 
-        uiCtx.fillStyle = "#3e2723"; uiCtx.font = "bold 50px Courier New"; uiCtx.textAlign = "center";
+        uiCtx.fillStyle="#3e2723"; uiCtx.font="bold 50px monospace"; uiCtx.textAlign="center";
         uiCtx.fillText(`WORD FORGE`, 512, 80);
 
-        const drawSlot = (label, text, x, y, key) => {
-            uiCtx.fillStyle = "rgba(255,255,255,0.8)"; uiCtx.fillRect(x, y, 160, 160); 
-            uiCtx.lineWidth = 4; uiCtx.strokeRect(x, y, 160, 160);
-            uiCtx.fillStyle = "#000"; uiCtx.font = "30px Courier New";
-            uiCtx.fillText(text || `[${label}]`, x + 80, y + 90);
-            uiHitboxes.push({x, y, w:160, h:160, action: 'clear', key: key});
+        const drawSlot = (label, txt, x, y, k) => {
+            uiCtx.fillStyle="#fff"; uiCtx.fillRect(x,y,160,160); uiCtx.strokeRect(x,y,160,160);
+            uiCtx.fillStyle="#000"; uiCtx.font="30px monospace"; uiCtx.fillText(txt||`[${label}]`, x+80, y+90);
+            uiHitboxes.push({x,y,w:160,h:160,act:'clear',key:k});
         };
-
         drawSlot("Pre", STATE.forge.pre, 200, 150, 'pre');
         drawSlot("Root", STATE.forge.root, 432, 150, 'root');
         drawSlot("Suf", STATE.forge.suf, 664, 150, 'suf');
 
-        uiCtx.fillStyle = "#27ae60"; uiCtx.fillRect(412, 350, 200, 80);
-        uiCtx.fillStyle = "white"; uiCtx.font = "bold 40px Courier New"; uiCtx.fillText("FORGE", 512, 405);
-        uiHitboxes.push({x:412, y:350, w:200, h:80, action: 'forge'});
+        uiCtx.fillStyle="#27ae60"; uiCtx.fillRect(412,350,200,80);
+        uiCtx.fillStyle="white"; uiCtx.fillText("FORGE", 512, 405);
+        uiHitboxes.push({x:412,y:350,w:200,h:80,act:'forge'});
 
-        uiCtx.fillStyle = "#e67e22"; uiCtx.font = "30px Courier New"; uiCtx.fillText(STATE.msg, 512, 480);
+        uiCtx.fillStyle="#e67e22"; uiCtx.fillText(STATE.msg, 512, 480);
 
-        const drawChip = (text, x, y, type, val) => {
-            uiCtx.fillStyle = type === 'root' ? "#c8e6c9" : "#bbdefb";
-            uiCtx.fillRect(x, y, 200, 60);
-            uiCtx.strokeStyle = "#2e7d32"; uiCtx.lineWidth = 2; uiCtx.strokeRect(x, y, 200, 60);
-            uiCtx.fillStyle = "#000"; uiCtx.font = "24px Courier New"; uiCtx.fillText(text, x + 100, y + 40);
-            uiHitboxes.push({x, y, w:200, h:60, action: 'add', type: type, val: val});
+        const drawChip = (txt,x,y,typ,val) => {
+            uiCtx.fillStyle = typ==='root'?"#c8e6c9":"#bbdefb";
+            uiCtx.fillRect(x,y,200,60); uiCtx.strokeRect(x,y,200,60);
+            uiCtx.fillStyle="#000"; uiCtx.font="24px monospace"; uiCtx.fillText(txt, x+100, y+40);
+            uiHitboxes.push({x,y,w:200,h:60,act:'add',type:typ,val:val});
         };
-
-        STATE.roots.slice(0, 4).forEach((r, i) => drawChip(r, 100, 550 + (i*70), 'root', r));
-        STATE.affixes.slice(0, 4).forEach((a, i) => drawChip("-" + a.val, 724, 550 + (i*70), 'suf', a.val));
-
+        STATE.roots.slice(0,4).forEach((r,i)=>drawChip(r,100,550+(i*70),'root',r));
+        STATE.affixes.slice(0,4).forEach((a,i)=>drawChip("-"+a.val,724,550+(i*70),'suf',a.val));
         uiTexture.needsUpdate = true;
     }
 
     async function handleForge() {
         if(!STATE.forge.root) return;
-        let word = ((STATE.forge.pre||"") + STATE.forge.root + (STATE.forge.suf||"")).toLowerCase();
-        STATE.msg = "Checking..."; drawUI();
-        
+        let w = ((STATE.forge.pre||"")+STATE.forge.root+(STATE.forge.suf||"")).toLowerCase();
+        STATE.msg="Checking..."; drawUI();
         try {
-            const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-            if(!res.ok) throw new Error();
-            const data = await res.json();
-            STATE.msg = `${word.toUpperCase()}: Valid!`;
-            STATE.gems += 15;
-            document.getElementById('ui-gems').innerText = STATE.gems;
-            STATE.forge = { pre:null, root:null, suf:null };
-        } catch(e) {
-            STATE.msg = `"${word}" is not a word.`;
-        }
+            const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${w}`);
+            if(!r.ok) throw new Error();
+            STATE.msg = `${w.toUpperCase()}: VALID!`; STATE.gems+=15; document.getElementById('ui-gems').innerText=STATE.gems;
+            STATE.forge={pre:null,root:null,suf:null};
+        } catch(e){ STATE.msg=`${w} is invalid.`; }
         drawUI();
     }
 
-    // --- 7. CONTROLS ---
+
+    // --- 8. CONTROLS ---
     const controller1 = renderer.xr.getController(0);
     const controller2 = renderer.xr.getController(1);
     dolly.add(controller1); dolly.add(controller2);
     
+    // Ray Line
     const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
     const rayLine = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
-    controller1.add(rayLine.clone());
-    controller2.add(rayLine);
+    controller1.add(rayLine.clone()); controller2.add(rayLine);
 
     const desktopControls = new PointerLockControls(camera, document.body);
-    const keys = { w:false, a:false, s:false, d:false };
-    document.addEventListener('keydown', (e) => {
-        if(e.key === 'w') keys.w = true;
-        if(e.key === 'a') keys.a = true;
-        if(e.key === 's') keys.s = true;
-        if(e.key === 'd') keys.d = true;
-        if(e.key === 'e') toggleInventory(true);
-        if(e.key === 'b') buildBlock(true);
+    const keys = {w:false,a:false,s:false,d:false};
+    document.addEventListener('keydown', e => {
+        if(e.key==='w') keys.w=true; if(e.key==='a') keys.a=true; if(e.key==='s') keys.s=true; if(e.key==='d') keys.d=true;
+        if(e.key==='e') toggleInventory(true);
     });
-    document.addEventListener('keyup', (e) => {
-        if(e.key === 'w') keys.w = false;
-        if(e.key === 'a') keys.a = false;
-        if(e.key === 's') keys.s = false;
-        if(e.key === 'd') keys.d = false;
+    document.addEventListener('keyup', e => {
+        if(e.key==='w') keys.w=false; if(e.key==='a') keys.a=false; if(e.key==='s') keys.s=false; if(e.key==='d') keys.d=false;
     });
     document.addEventListener('mousedown', () => {
         if(!renderer.xr.isPresenting) {
@@ -308,125 +309,104 @@
         }
     });
 
-    // --- 8. INTERACTION ---
+    // --- 9. INTERACTION ---
     const raycaster = new THREE.Raycaster();
-
     function toggleInventory(isDesktop) {
         STATE.inventoryOpen = !STATE.inventoryOpen;
         uiPlane.visible = STATE.inventoryOpen;
         if(STATE.inventoryOpen) {
-            const pPos = dolly.position.clone();
-            pPos.y += (isDesktop ? 0 : 1.6);
-            const dir = new THREE.Vector3();
-            if(isDesktop) camera.getWorldDirection(dir);
-            else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
-            uiPlane.position.copy(pPos).add(dir.multiplyScalar(2));
-            uiPlane.lookAt(pPos);
+            const p = dolly.position.clone(); p.y += (isDesktop?0:1.6);
+            const d = new THREE.Vector3();
+            if(isDesktop) camera.getWorldDirection(d); else d.set(0,0,-1).applyQuaternion(dolly.quaternion);
+            uiPlane.position.copy(p).add(d.multiplyScalar(2));
+            uiPlane.lookAt(p);
             drawUI();
         }
     }
-
-    function buildBlock(isDesktop) {
-        const dir = new THREE.Vector3();
-        if(isDesktop) camera.getWorldDirection(dir);
-        else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
-        const pos = dolly.position.clone().add(dir.multiplyScalar(3));
-        createBlock(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z), 'wood');
-    }
-
-    function interact(origin, direction) {
-        raycaster.set(origin, direction);
+    
+    function interact(origin, dir) {
+        raycaster.set(origin, dir);
         if(STATE.inventoryOpen) {
             const hits = raycaster.intersectObject(uiPlane);
-            if(hits.length > 0) {
+            if(hits.length>0) {
                 const uv = hits[0].uv;
-                const cx = uv.x * 1024; const cy = (1-uv.y) * 768;
+                const cx=uv.x*1024, cy=(1-uv.y)*768;
                 for(let b of uiHitboxes) {
-                    if(cx >= b.x && cx <= b.x+b.w && cy >= b.y && cy <= b.y+b.h) {
-                        if(b.action === 'clear') STATE.forge[b.key] = null;
-                        if(b.action === 'add') { if(b.type==='root') STATE.forge.root = b.val; else STATE.forge.suf = b.val; }
-                        if(b.action === 'forge') handleForge();
-                        drawUI();
-                        return;
+                    if(cx>=b.x && cx<=b.x+b.w && cy>=b.y && cy<=b.y+b.h) {
+                        if(b.act==='clear') STATE.forge[b.key]=null;
+                        if(b.act==='add') { if(b.type==='root') STATE.forge.root=b.val; else STATE.forge.suf=b.val; }
+                        if(b.act==='forge') handleForge();
+                        drawUI(); return;
                     }
                 }
             }
         } else {
             const hits = raycaster.intersectObjects(activeBlocks);
-            if(hits.length > 0 && hits[0].distance < 6) {
-                const hit = hits[0].object;
-                scene.remove(hit);
-                activeBlocks.splice(activeBlocks.indexOf(hit), 1);
-                
-                const type = hit.userData.type || 'dirt';
-                if(LOOT_TABLE[type] && Math.random() < 0.7) {
-                    if(Math.random() < 0.5) {
-                        const w = LOOT_TABLE[type].roots[Math.floor(Math.random() * LOOT_TABLE[type].roots.length)];
-                        STATE.roots.push(w); STATE.msg = `Got Root: ${w}`;
+            if(hits.length>0 && hits[0].distance<6) {
+                const h = hits[0].object;
+                scene.remove(h); activeBlocks.splice(activeBlocks.indexOf(h),1);
+                const t = h.userData.type || 'dirt';
+                if(LOOT[t] && Math.random()<0.7) {
+                    if(Math.random()<0.5) {
+                        const w = LOOT[t].roots[Math.floor(Math.random()*LOOT[t].roots.length)];
+                        STATE.roots.push(w); STATE.msg=`Got Root: ${w}`;
                     } else {
-                        const a = LOOT_TABLE[type].affixes[Math.floor(Math.random() * LOOT_TABLE[type].affixes.length)];
-                        STATE.affixes.push({val:a, type:'suf'}); STATE.msg = `Got Affix: -${a}`;
+                        const a = LOOT[t].affixes[Math.floor(Math.random()*LOOT[t].affixes.length)];
+                        STATE.affixes.push({val:a, type:'suf'}); STATE.msg=`Got Affix: -${a}`;
                     }
-                    STATE.gems++;
-                    document.getElementById('ui-gems').innerText = STATE.gems;
+                    STATE.gems++; document.getElementById('ui-gems').innerText=STATE.gems;
                 }
             }
         }
     }
 
-    function onSelectStart(e) {
+    function onSelect(e) {
         const c = e.target;
         const mat = new THREE.Matrix4().extractRotation(c.matrixWorld);
-        const dir = new THREE.Vector3(0,0,-1).applyMatrix4(mat);
-        const origin = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
-        interact(origin, dir);
+        interact(new THREE.Vector3().setFromMatrixPosition(c.matrixWorld), new THREE.Vector3(0,0,-1).applyMatrix4(mat));
     }
-    controller1.addEventListener('selectstart', onSelectStart);
-    controller2.addEventListener('selectstart', onSelectStart);
-    controller1.addEventListener('squeezestart', () => toggleInventory(false));
-    controller2.addEventListener('squeezestart', () => toggleInventory(false));
+    controller1.addEventListener('selectstart', onSelect);
+    controller2.addEventListener('selectstart', onSelect);
+    controller1.addEventListener('squeezestart', ()=>toggleInventory(false));
+    controller2.addEventListener('squeezestart', ()=>toggleInventory(false));
 
-    // --- 9. LOOP ---
+
+    // --- 10. LOOP ---
     const clock = new THREE.Clock();
-    setInterval(() => { if(enemies.length < 5) spawnEnemy(); }, 5000);
+    setInterval(()=>{if(enemies.length<5) spawnEnemy();}, 4000);
 
     renderer.setAnimationLoop(() => {
         const dt = clock.getDelta();
-        
         updateEnemies(dt);
 
         if(renderer.xr.isPresenting) {
-            const session = renderer.xr.getSession();
-            if(session && session.inputSources) {
-                for(let src of session.inputSources) {
-                    if(src.gamepad && src.handedness === 'left') {
-                        const x = src.gamepad.axes[2], y = src.gamepad.axes[3];
+            const s = renderer.xr.getSession();
+            if(s && s.inputSources) {
+                for(let src of s.inputSources) {
+                    if(src.gamepad && src.handedness==='left') {
+                        const x=src.gamepad.axes[2], y=src.gamepad.axes[3];
                         if(Math.abs(x)>0.1 || Math.abs(y)>0.1) {
-                            const dir = new THREE.Vector3(x, 0, y).applyQuaternion(dolly.quaternion);
-                            dolly.position.add(dir.multiplyScalar(3 * dt));
+                            dolly.position.add(new THREE.Vector3(x,0,y).applyQuaternion(dolly.quaternion).multiplyScalar(3*dt));
                         }
                     }
-                    if(src.gamepad && src.handedness === 'right') {
-                        const x = src.gamepad.axes[2];
-                        if(Math.abs(x)>0.1) dolly.rotation.y -= x * 2 * dt;
+                    if(src.gamepad && src.handedness==='right') {
+                        const x=src.gamepad.axes[2]; if(Math.abs(x)>0.1) dolly.rotation.y -= x*2*dt;
                     }
                 }
             }
         } else {
             if(desktopControls.isLocked) {
-                const dir = new THREE.Vector3();
-                camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
-                const side = new THREE.Vector3().crossVectors(camera.up, dir).normalize();
-                const speed = 5 * dt;
-                
-                if(keys.w) dolly.position.add(dir.multiplyScalar(speed));
-                if(keys.s) dolly.position.add(dir.multiplyScalar(-speed));
-                if(keys.a) dolly.position.add(side.multiplyScalar(speed));
-                if(keys.d) dolly.position.add(side.multiplyScalar(-speed));
+                const d = new THREE.Vector3(); camera.getWorldDirection(d); d.y=0; d.normalize();
+                const s = new THREE.Vector3().crossVectors(camera.up,d).normalize();
+                const spd = 5*dt;
+                if(keys.w) dolly.position.add(d.multiplyScalar(spd));
+                if(keys.s) dolly.position.add(d.multiplyScalar(-spd));
+                if(keys.a) dolly.position.add(s.multiplyScalar(spd));
+                if(keys.d) dolly.position.add(s.multiplyScalar(-spd));
             }
         }
-
         renderer.render(scene, camera);
     });
-
 </script>
+</body>
+</html>
