@@ -2,468 +2,484 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>WordCraft 3D: Final Texture Edition</title>
+    <title>WordCraft 3D: Faithful Edition</title>
     <style>
-        /* --- CORE STYLES --- */
-        body { margin: 0; overflow: hidden; font-family: 'Verdana', sans-serif; user-select: none; background: #000; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
         
+        /* DESKTOP HUD */
+        #desktop-ui {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
         #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
-            border: 2px solid rgba(255, 255, 255, 0.9); border-radius: 50%;
-            transform: translate(-50%, -50%); pointer-events: none; z-index: 10;
-            display: none; /* Hidden until start */
+            width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
         }
-        
-        #hud-layer {
-            position: absolute; top: 10px; left: 10px; color: white;
-            text-shadow: 2px 2px 0 #000; pointer-events: none; display: none; z-index: 10;
-            font-size: 18px; font-weight: bold;
+        #hud-info {
+            position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px 0 #000;
+            font-size: 20px; font-weight: bold;
         }
-
-        /* --- YOUR ORIGINAL 2D INVENTORY --- */
-        #inventory-screen {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 750px; height: 600px; 
-            /* Using your BG asset */
-            background: #f3e5f5 url('assets/bg.png'); background-size: cover;
-            border: 6px solid #5d4037; border-radius: 12px; display: none;
-            flex-direction: column; z-index: 100; color: #3e2723;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+        #instructions {
+            position: absolute; bottom: 20px; left: 20px; color: #ddd; font-size: 14px;
+            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px;
         }
-        
-        .inv-header { padding: 15px; background: rgba(255,255,255,0.95); border-bottom: 4px solid #5d4037; }
-        .inv-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .inv-footer { padding: 15px; background: rgba(255,255,255,0.95); border-top: 4px solid #5d4037; text-align:center; }
-
-        /* Forge UI */
-        .forge-area { 
-            display: flex; justify-content: center; align-items: center; gap: 10px; 
-            padding: 20px; background: rgba(255,255,255,0.6); border-radius: 8px; border: 2px dashed #5d4037;
-        }
-        .slot { 
-            width: 70px; height: 70px; background: #fff; border: 3px solid #5d4037; 
-            display: flex; align-items: center; justify-content: center; 
-            font-weight: bold; cursor: pointer; border-radius: 8px;
-            transition: 0.2s;
-        }
-        .slot:hover { transform: scale(1.05); border-color: #e67e22; }
-
-        /* Chips */
-        .chip { 
-            display: inline-block; padding: 8px 12px; margin: 4px; border-radius: 20px; 
-            background: white; border: 2px solid #5d4037; font-weight: bold; cursor: pointer;
-            box-shadow: 0 2px 0 rgba(0,0,0,0.2);
-        }
-        .chip:active { transform: translateY(2px); box-shadow: none; }
-        .chip-root { background: #c8e6c9; color: #1b5e20; }
-        .chip-affix { background: #bbdefb; color: #0d47a1; }
-
-        #forge-msg { 
-            background: #fff8e1; border: 2px solid #ffca28; padding: 10px; margin-top: 10px;
-            text-align: center; border-radius: 6px; font-weight: bold; color: #f57f17; min-height: 40px;
-        }
-        
-        .btn { background: #d35400; color: white; border: none; padding: 10px 25px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; }
-        .btn:hover { background: #e67e22; }
     </style>
-    
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
     </script>
 </head>
 <body>
 
+<div id="desktop-ui">
     <div id="crosshair"></div>
-    <div id="hud-layer">
-        <h2>WordCraft 3D</h2>
-        <p>Click to Start | WASD Move | Click Mine | 'E' Inventory</p>
-        <p>💎 Gems: <span id="hud-gems">0</span></p>
+    <div id="hud-info">💎 Fragments: <span id="ui-gems">0</span> | HP: <span id="ui-hp">3</span></div>
+    <div id="instructions">
+        <b>WASD</b> Move | <b>Click</b> Mine | <b>B</b> Build | <b>E</b> Inventory | <b>VR:</b> Trigger Mine / Grip Inv
     </div>
-
-    <div id="inventory-screen">
-        <div class="inv-header">
-            <h2 style="margin:0; text-align:center;">The Word Forge</h2>
-        </div>
-        <div class="inv-body">
-            <div class="forge-area">
-                <div id="slot-pre" class="slot" onclick="clearSlot('pre')">[Pre]</div> +
-                <div id="slot-root" class="slot" onclick="clearSlot('root')">[ROOT]</div> +
-                <div id="slot-suf" class="slot" onclick="clearSlot('suf')">[Suf]</div>
-                <button class="btn" style="background:#27ae60; height:70px;" onclick="runForge()">🔨</button>
-            </div>
-            <div id="forge-msg">Combine parts to verify with Dictionary API</div>
-            
-            <div style="display:flex; gap:20px;">
-                <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
-                    <h4>ROOTS</h4>
-                    <div id="list-roots"></div>
-                </div>
-                <div style="flex:1; background:rgba(255,255,255,0.5); padding:10px; border-radius:8px;">
-                    <h4>AFFIXES</h4>
-                    <div id="list-affixes"></div>
-                </div>
-            </div>
-        </div>
-        <div class="inv-footer">
-            <button class="btn" onclick="toggleInventory()">Close & Resume</button>
-        </div>
-    </div>
+</div>
 
 <script type="module">
     import * as THREE from 'three';
+    import { VRButton } from 'three/addons/webxr/VRButton.js';
+    import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
     import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
-    // --- 1. DATA & SETTINGS ---
-    const CHUNK_SIZE = 16;
-    const RENDER_DISTANCE = 2; 
-    const WORLD_DEPTH = 10;
-    
-    const WORD_DATA = {
-        "dirt": { roots: ["play", "help", "walk", "look"], affixes: ["s", "ed", "ing"] },
-        "stone": { roots: ["struct", "ject", "form"], affixes: ["re", "un", "tion"] },
-        "wood": { roots: ["grow", "leaf"], affixes: ["ness", "ful"] }
+    // --- 1. GAME STATE & DATA ---
+    const STATE = {
+        hp: 3, maxHp: 3, gems: 0,
+        roots: [], affixes: [],
+        inventoryOpen: false,
+        activeBlock: 'wood', // For building
+        forge: { pre: null, root: null, suf: null },
+        msg: "Forge a word to begin!"
     };
 
-    let player = { gems: 0, roots: [], affixes: [] };
-    let forge = { pre: null, root: null, suf: null };
+    const LOOT_TABLE = {
+        "dirt": { roots: ["play", "help", "walk", "look", "jump"], affixes: ["s", "ed", "ing"] },
+        "stone": { roots: ["struct", "ject", "form", "port"], affixes: ["re", "un", "tion"] },
+        "wood": { roots: ["grow", "leaf", "tree"], affixes: ["ness", "ful", "less"] }
+    };
 
-    // --- 2. SCENE SETUP ---
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky Blue
-    scene.fog = new THREE.Fog(0x87CEEB, 20, 60);
-
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
-    const user = new THREE.Group();
-    user.position.set(0, 20, 0); // Drop in from sky
-    user.add(camera);
-    scene.add(user);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: false }); // Crisp pixels
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    dirLight.position.set(10, 20, 10);
-    scene.add(dirLight);
-
-    // --- 3. TEXTURE ATLAS LOGIC (The Fix) ---
+    // --- 2. ASSET LOADING (PIXEL ART STYLE) ---
     const textureLoader = new THREE.TextureLoader();
-    let atlas = null;
     
-    // Attempt to load the asset
-    try {
-        atlas = textureLoader.load('assets/tiles.png');
-        atlas.magFilter = THREE.NearestFilter;
-        atlas.minFilter = THREE.NearestFilter;
-        atlas.wrapS = THREE.RepeatWrapping;
-        atlas.wrapT = THREE.RepeatWrapping;
-    } catch(e) { console.warn("Texture load failed"); }
+    // Load TILES (Reuse your 2D asset)
+    const tilesTex = textureLoader.load('assets/tiles.png');
+    tilesTex.magFilter = THREE.NearestFilter; // KEEP PIXELS SHARP
+    tilesTex.minFilter = THREE.NearestFilter;
+    
+    // Load CHARS (Reuse your 2D asset)
+    const charsTex = textureLoader.load('assets/chars.png');
+    charsTex.magFilter = THREE.NearestFilter;
+    charsTex.minFilter = THREE.NearestFilter;
 
-    // Helper to map 1 tile from the vertical strip of 6
-    function getMaterial(index) {
-        if(!atlas) return new THREE.MeshLambertMaterial({ color: 0x888888 }); // Fallback
-        
-        const mat = new THREE.MeshLambertMaterial({ map: atlas.clone() });
-        // There are 6 tiles vertically. 1/6 = 0.1666
-        mat.map.repeat.set(1, 1/6);
-        mat.map.offset.y = index * (1/6); 
-        return mat;
+    // Helper to crop texture for specific block types based on your 2D grid logic
+    // We clone the texture so different blocks can show different parts of the image
+    function getMat(index) {
+        const tex = tilesTex.clone();
+        tex.magFilter = THREE.NearestFilter;
+        tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(1, 0.2); // Assuming 5 rows in your tiles.png
+        tex.offset.y = 1 - ((index + 1) * 0.2); 
+        return new THREE.MeshLambertMaterial({ map: tex });
     }
 
-    // Material Map based on your 'tiles.png' layout (Bottom to Top usually)
-    // Assuming: 0=Water, 1=Wood, 2=Pillar, 3=Stone, 4=Dirt, 5=Grass
-    const materials = {
-        grass: getMaterial(5),  // Top Block
-        dirt: getMaterial(4),   // 2nd Block
-        stone: getMaterial(3),  // 3rd Block
-        bedrock: getMaterial(2),// 4th Block (Pillar)
-        wood: getMaterial(1),   // 5th Block (Wood)
-        water: getMaterial(0),  // Bottom Block
-        
-        // Leaf fallback (Tint the wood green or use grass)
-        leaf: new THREE.MeshLambertMaterial({ color: 0x228b22 }) 
+    // Material Atlas (Approximate mapping to your 2D rows)
+    const MATERIALS = {
+        'dirt': getMat(1),  // Row 1
+        'stone': getMat(2), // Row 2
+        'obsidian': getMat(3), // Row 3
+        'wood': getMat(4),  // Row 4
+        'leaves': new THREE.MeshLambertMaterial({ color: 0x228b22 }) // Fallback for leaves
     };
 
-    // --- 4. INFINITE TERRAIN ---
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const chunks = {};
+    // --- 3. SCENE & WORLD ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.Fog(0x87CEEB, 15, 40); // Close fog for that "retro" feel
+
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
+    const dolly = new THREE.Group(); // The Player
+    dolly.position.set(0, 8, 0);
+    dolly.add(camera);
+    scene.add(dolly);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false }); // False for pixel look
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+    document.body.appendChild(VRButton.createButton(renderer));
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight.position.set(10, 20, 10);
+    scene.add(sunLight);
+
+    // --- 4. VOXEL WORLD GENERATION ---
+    const CHUNKS = {};
     const activeBlocks = []; // For Raycasting
-    const colliders = [];    // For Physics
+    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+
+    function generateChunk(cx, cz) {
+        // Simple generation loop similar to your 2D logic
+        for(let x = cx*16; x < (cx+1)*16; x++) {
+            for(let z = cz*16; z < (cz+1)*16; z++) {
+                // Heightmap
+                let h = Math.floor(Math.sin(x*0.1)*3 + Math.cos(z*0.1)*3);
+                
+                // Grass/Dirt
+                createBlock(x, h, z, 'dirt');
+                createBlock(x, h-1, z, 'dirt');
+                
+                // Stone below
+                for(let d=2; d<6; d++) createBlock(x, h-d, z, 'stone');
+                
+                // Trees (similar logic to 2D)
+                if(Math.random() < 0.02) {
+                    createBlock(x, h+1, z, 'wood');
+                    createBlock(x, h+2, z, 'wood');
+                    createBlock(x, h+3, z, 'leaves');
+                    createBlock(x+1, h+2, z, 'leaves');
+                    createBlock(x-1, h+2, z, 'leaves');
+                    createBlock(x, h+2, z+1, 'leaves');
+                    createBlock(x, h+2, z-1, 'leaves');
+                }
+            }
+        }
+    }
 
     function createBlock(x, y, z, type) {
-        const mesh = new THREE.Mesh(geometry, materials[type]);
+        const mat = MATERIALS[type] || MATERIALS['dirt'];
+        const mesh = new THREE.Mesh(blockGeo, mat);
         mesh.position.set(x, y, z);
         mesh.userData = { type: type, isBlock: true };
         scene.add(mesh);
         activeBlocks.push(mesh);
-        colliders.push(mesh);
-        return mesh;
     }
 
-    function generateChunk(cx, cz) {
-        const key = `${cx},${cz}`;
-        if (chunks[key]) return;
-        chunks[key] = [];
+    // Init World
+    generateChunk(0, 0);
 
-        const startX = cx * CHUNK_SIZE;
-        const startZ = cz * CHUNK_SIZE;
-
-        for (let x = startX; x < startX + CHUNK_SIZE; x++) {
-            for (let z = startZ; z < startZ + CHUNK_SIZE; z++) {
-                let h = Math.floor(Math.sin(x * 0.15) * 3 + Math.cos(z * 0.15) * 3);
-                
-                // Terrain Stack
-                chunks[key].push(createBlock(x, h, z, 'grass'));
-                chunks[key].push(createBlock(x, h-1, z, 'dirt'));
-                chunks[key].push(createBlock(x, h-2, z, 'dirt'));
-                for(let d=3; d<WORLD_DEPTH; d++) chunks[key].push(createBlock(x, h-d, z, 'stone'));
-                chunks[key].push(createBlock(x, h-WORLD_DEPTH, z, 'bedrock'));
-
-                // Trees
-                if (Math.random() < 0.03) {
-                    let th = h + 1;
-                    chunks[key].push(createBlock(x, th, z, 'wood'));
-                    chunks[key].push(createBlock(x, th+1, z, 'wood'));
-                    chunks[key].push(createBlock(x, th+2, z, 'leaf'));
-                    chunks[key].push(createBlock(x+1, th+1, z, 'leaf'));
-                    chunks[key].push(createBlock(x-1, th+1, z, 'leaf'));
-                    chunks[key].push(createBlock(x, th+1, z+1, 'leaf'));
-                    chunks[key].push(createBlock(x, th+1, z-1, 'leaf'));
-                }
-            }
-        }
+    // --- 5. ENEMIES (2D SPRITES IN 3D) ---
+    const enemies = [];
+    
+    // Texture logic for sprites
+    function getSpriteMat(col, row) {
+        const tex = charsTex.clone();
+        tex.magFilter = THREE.NearestFilter;
+        tex.repeat.set(0.33, 0.33); // 3x3 Grid
+        tex.offset.set(col * 0.33, 1 - (row+1) * 0.33);
+        return new THREE.SpriteMaterial({ map: tex });
     }
+    
+    const matBat = getSpriteMat(1, 1); // Row 2, Col 2 (Approx)
+    const matSlime = getSpriteMat(2, 2); // Row 3, Col 3
 
-    function updateWorld() {
-        const px = user.position.x;
-        const pz = user.position.z;
-        const cx = Math.floor(px / CHUNK_SIZE);
-        const cz = Math.floor(pz / CHUNK_SIZE);
-
-        for (let x = -RENDER_DISTANCE; x <= RENDER_DISTANCE; x++) {
-            for (let z = -RENDER_DISTANCE; z <= RENDER_DISTANCE; z++) {
-                generateChunk(cx + x, cz + z);
-            }
-        }
+    function spawnEnemy() {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 10 + Math.random() * 5;
+        const x = dolly.position.x + Math.cos(angle) * dist;
+        const z = dolly.position.z + Math.sin(angle) * dist;
         
-        // Simple Cleanup
-        for (const key in chunks) {
-            const [kcx, kcz] = key.split(',').map(Number);
-            if (Math.abs(kcx - cx) > RENDER_DISTANCE + 1 || Math.abs(kcz - cz) > RENDER_DISTANCE + 1) {
-                chunks[key].forEach(mesh => {
-                    scene.remove(mesh);
-                    const ai = activeBlocks.indexOf(mesh); if(ai>-1) activeBlocks.splice(ai,1);
-                    const ci = colliders.indexOf(mesh); if(ci>-1) colliders.splice(ci,1);
-                });
-                delete chunks[key];
-            }
-        }
-    }
-
-    // --- 5. CONTROLS & PHYSICS ---
-    const controls = new PointerLockControls(camera, document.body);
-    let moveF=false, moveB=false, moveL=false, moveR=false;
-    let velocity = new THREE.Vector3();
-    let canJump = false;
-    let isInventoryOpen = false;
-
-    // Keys
-    document.addEventListener('keydown', (e) => {
-        switch(e.code) {
-            case 'KeyW': moveF = true; break;
-            case 'KeyS': moveB = true; break;
-            case 'KeyA': moveL = true; break;
-            case 'KeyD': moveR = true; break;
-            case 'Space': if(canJump) velocity.y = 12; canJump = false; break;
-            case 'KeyE': toggleInventory(); break;
-        }
-    });
-    document.addEventListener('keyup', (e) => {
-        switch(e.code) {
-            case 'KeyW': moveF = false; break;
-            case 'KeyS': moveB = false; break;
-            case 'KeyA': moveL = false; break;
-            case 'KeyD': moveR = false; break;
-        }
-    });
-
-    // Mouse Interaction
-    document.addEventListener('click', () => {
-        if(!isInventoryOpen) {
-            if(!controls.isLocked) {
-                controls.lock();
-                document.getElementById('crosshair').style.display = 'block';
-                document.getElementById('hud-layer').style.display = 'block';
-            } else {
-                mineBlock();
-            }
-        }
-    });
-
-    // Mining Raycaster
-    const raycaster = new THREE.Raycaster();
-    const center = new THREE.Vector2(0,0);
-
-    function mineBlock() {
-        raycaster.setFromCamera(center, camera);
-        const intersects = raycaster.intersectObjects(activeBlocks);
+        const type = Math.random() > 0.5 ? 'bat' : 'slime';
+        const mat = type === 'bat' ? matBat : matSlime;
+        const sprite = new THREE.Sprite(mat);
         
-        if (intersects.length > 0 && intersects[0].distance < 6) {
-            const hit = intersects[0].object;
-            const type = hit.userData.type;
-            
-            if(type === 'bedrock') return; // Cannot mine
+        sprite.position.set(x, 5, z); // Spawn in air
+        sprite.scale.set(1.5, 1.5, 1.5);
+        sprite.userData = { type: type, hp: 2 };
+        
+        scene.add(sprite);
+        enemies.push(sprite);
+    }
 
-            scene.remove(hit);
-            activeBlocks.splice(activeBlocks.indexOf(hit), 1);
-            colliders.splice(colliders.indexOf(hit), 1);
+    // Update Loop for enemies
+    function updateEnemies(dt) {
+        enemies.forEach((e, i) => {
+            // Move toward player
+            const dir = new THREE.Vector3().subVectors(dolly.position, e.position).normalize();
+            e.position.add(dir.multiplyScalar(2 * dt)); // Speed
             
-            // Loot Logic
-            if(WORD_DATA[type] && Math.random() < 0.7) {
-                const loot = WORD_DATA[type];
-                if(Math.random() < 0.5) {
-                    let w = loot.roots[Math.floor(Math.random()*loot.roots.length)];
-                    player.roots.push(w);
-                } else {
-                    let a = loot.affixes[Math.floor(Math.random()*loot.affixes.length)];
-                    player.affixes.push({val:a, type:"suf"});
-                }
-                player.gems++;
-                updateHud();
+            // Simple Collision
+            if(e.position.distanceTo(dolly.position) < 1.0) {
+                STATE.hp--;
+                document.getElementById('ui-hp').innerText = STATE.hp;
+                scene.remove(e);
+                enemies.splice(i, 1);
+                // Simple hurt effect
+                scene.background = new THREE.Color(0xff0000);
+                setTimeout(() => scene.background = new THREE.Color(0x87CEEB), 100);
             }
-        }
-    }
-
-    // Collision Logic
-    const playerBox = new THREE.Box3();
-    const playerSize = new THREE.Vector3(0.5, 1.8, 0.5);
-    const wallBox = new THREE.Box3();
-
-    function checkCollision(pos) {
-        playerBox.setFromCenterAndSize(pos, playerSize);
-        for(let mesh of colliders) {
-            if(mesh.position.distanceToSquared(pos) < 6) { // Optimization
-                wallBox.setFromObject(mesh);
-                if(wallBox.intersectsBox(playerBox)) return true;
-            }
-        }
-        return false;
-    }
-
-    // --- 6. GAME LOOP ---
-    const clock = new THREE.Clock();
-    updateWorld(); // Init
-
-    function animate() {
-        requestAnimationFrame(animate);
-        const dt = Math.min(clock.getDelta(), 0.1);
-
-        if(controls.isLocked) {
-            // Friction
-            velocity.x -= velocity.x * 10.0 * dt;
-            velocity.z -= velocity.z * 10.0 * dt;
-            velocity.y -= 30.0 * dt; // Gravity
-
-            // WASD Direction relative to Camera
-            const direction = new THREE.Vector3();
-            direction.z = Number(moveF) - Number(moveB);
-            direction.x = Number(moveR) - Number(moveL);
-            direction.normalize();
-
-            if (moveF || moveB) velocity.z -= direction.z * 150.0 * dt;
-            if (moveL || moveR) velocity.x -= direction.x * 150.0 * dt;
-
-            // Apply Move (X/Z)
-            controls.moveRight(-velocity.x * dt);
-            controls.moveForward(-velocity.z * dt);
-            
-            // Apply Gravity (Y)
-            user.position.y += velocity.y * dt;
-
-            // Simple Floor Check
-            // We cast a ray down from feet
-            const footPos = user.position.clone();
-            footPos.y -= 1.6;
-            
-            // Are we inside a block?
-            if(checkCollision(footPos)) {
-                velocity.y = Math.max(0, velocity.y);
-                user.position.y = Math.ceil(footPos.y) + 1.6;
-                canJump = true;
-            }
-
-            // Infinite Gen
-            updateWorld();
-        }
-        renderer.render(scene, camera);
-    }
-    animate();
-
-    // --- 7. INVENTORY SYSTEM ---
-    window.toggleInventory = function() {
-        isInventoryOpen = !isInventoryOpen;
-        const el = document.getElementById('inventory-screen');
-        if(isInventoryOpen) {
-            controls.unlock();
-            el.style.display = 'flex';
-            renderInv();
-        } else {
-            controls.lock();
-            el.style.display = 'none';
-        }
-    };
-
-    function updateHud() {
-        document.getElementById('hud-gems').innerText = player.gems;
-    }
-
-    window.renderInv = function() {
-        updateHud();
-        document.getElementById('slot-pre').innerText = forge.pre || "[Pre]";
-        document.getElementById('slot-root').innerText = forge.root || "[ROOT]";
-        document.getElementById('slot-suf').innerText = forge.suf || "[Suf]";
-
-        let rList = document.getElementById('list-roots'); rList.innerHTML = "";
-        player.roots.forEach(r => {
-            let el = document.createElement('div'); el.className = "chip chip-root";
-            el.innerText = r; el.onclick = () => { forge.root = r; renderInv(); };
-            rList.appendChild(el);
         });
+    }
 
-        let aList = document.getElementById('list-affixes'); aList.innerHTML = "";
-        player.affixes.forEach(a => {
-            let el = document.createElement('div'); el.className = "chip chip-affix";
-            el.innerText = "-" + a.val; el.onclick = () => { forge.suf = a.val; renderInv(); };
-            aList.appendChild(el);
-        });
-    };
+    // --- 6. UI SYSTEM (CANVAS TEXTURE) ---
+    // This creates the "Inventory Tablet"
+    const uiCanvas = document.createElement('canvas');
+    uiCanvas.width = 1024; uiCanvas.height = 768;
+    const uiCtx = uiCanvas.getContext('2d');
+    const uiTexture = new THREE.CanvasTexture(uiCanvas);
+    const uiMat = new THREE.MeshBasicMaterial({ map: uiTexture, transparent: true, side: THREE.DoubleSide });
+    const uiPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.125), uiMat);
+    uiPlane.visible = false;
+    scene.add(uiPlane);
 
-    window.clearSlot = (t) => { forge[t] = null; renderInv(); };
+    let uiHitboxes = [];
 
-    window.runForge = async function() {
-        if(!forge.root) return;
-        let word = ((forge.pre||"") + forge.root + (forge.suf||"")).toLowerCase();
-        let msg = document.getElementById('forge-msg');
-        msg.innerText = "Checking Dictionary...";
+    function drawUI() {
+        // Draw the beige inventory background similar to your 2D game
+        uiCtx.fillStyle = "#f3e5f5";
+        uiCtx.fillRect(0, 0, 1024, 768);
+        uiCtx.lineWidth = 15; uiCtx.strokeStyle = "#5d4037"; uiCtx.strokeRect(0, 0, 1024, 768);
+        uiHitboxes = [];
+
+        // Header
+        uiCtx.fillStyle = "#3e2723"; uiCtx.font = "bold 50px Courier New"; uiCtx.textAlign = "center";
+        uiCtx.fillText(`WORD FORGE`, 512, 80);
+
+        // Slots
+        const drawSlot = (label, text, x, y, key) => {
+            uiCtx.fillStyle = "rgba(255,255,255,0.8)"; uiCtx.fillRect(x, y, 160, 160); 
+            uiCtx.lineWidth = 4; uiCtx.strokeRect(x, y, 160, 160);
+            uiCtx.fillStyle = "#000"; uiCtx.font = "30px Courier New";
+            uiCtx.fillText(text || `[${label}]`, x + 80, y + 90);
+            uiHitboxes.push({x, y, w:160, h:160, action: 'clear', key: key});
+        };
+
+        drawSlot("Pre", STATE.forge.pre, 200, 150, 'pre');
+        drawSlot("Root", STATE.forge.root, 432, 150, 'root');
+        drawSlot("Suf", STATE.forge.suf, 664, 150, 'suf');
+
+        // Forge Button
+        uiCtx.fillStyle = "#27ae60"; uiCtx.fillRect(412, 350, 200, 80);
+        uiCtx.fillStyle = "white"; uiCtx.font = "bold 40px Courier New"; uiCtx.fillText("FORGE", 512, 405);
+        uiHitboxes.push({x:412, y:350, w:200, h:80, action: 'forge'});
+
+        // Msg
+        uiCtx.fillStyle = "#e67e22"; uiCtx.font = "30px Courier New"; uiCtx.fillText(STATE.msg, 512, 480);
+
+        // Word Chips
+        const drawChip = (text, x, y, type, val) => {
+            uiCtx.fillStyle = type === 'root' ? "#c8e6c9" : "#bbdefb";
+            uiCtx.fillRect(x, y, 200, 60);
+            uiCtx.strokeStyle = "#2e7d32"; uiCtx.lineWidth = 2; uiCtx.strokeRect(x, y, 200, 60);
+            uiCtx.fillStyle = "#000"; uiCtx.font = "24px Courier New"; uiCtx.fillText(text, x + 100, y + 40);
+            uiHitboxes.push({x, y, w:200, h:60, action: 'add', type: type, val: val});
+        };
+
+        // Render first 5 items only for simplicity
+        STATE.roots.slice(0, 4).forEach((r, i) => drawChip(r, 100, 550 + (i*70), 'root', r));
+        STATE.affixes.slice(0, 4).forEach((a, i) => drawChip("-" + a.val, 724, 550 + (i*70), 'suf', a.val));
+
+        uiTexture.needsUpdate = true;
+    }
+
+    async function handleForge() {
+        if(!STATE.forge.root) return;
+        let word = ((STATE.forge.pre||"") + STATE.forge.root + (STATE.forge.suf||"")).toLowerCase();
+        STATE.msg = "Checking..."; drawUI();
         
         try {
-            let res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+            const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
             if(!res.ok) throw new Error();
-            let data = await res.json();
-            msg.innerHTML = `<span style='color:green'>✨ ${word.toUpperCase()}</span>: ${data[0].meanings[0].definitions[0].definition}`;
-            player.gems += 15; updateHud();
-            forge = {pre:null, root:null, suf:null}; renderInv();
+            const data = await res.json();
+            const def = data[0].meanings[0].definitions[0].definition;
+            STATE.msg = `${word.toUpperCase()}: Valid!`;
+            STATE.gems += 15;
+            document.getElementById('ui-gems').innerText = STATE.gems;
+            STATE.forge = { pre:null, root:null, suf:null };
         } catch(e) {
-            msg.innerHTML = `<span style='color:red'>❌ ${word} is not a valid word.</span>`;
+            STATE.msg = `"${word}" is not a word.`;
         }
-    };
+        drawUI();
+    }
 
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+    // --- 7. CONTROLS (VR & DESKTOP) ---
+    
+    // VR Controllers
+    const controller1 = renderer.xr.getController(0);
+    const controller2 = renderer.xr.getController(1);
+    dolly.add(controller1); dolly.add(controller2);
+    
+    // Visual Ray
+    const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
+    const rayLine = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
+    controller1.add(rayLine.clone());
+    controller2.add(rayLine);
+
+    // Desktop Controls
+    const desktopControls = new PointerLockControls(camera, document.body);
+    const keys = { w:false, a:false, s:false, d:false };
+    document.addEventListener('keydown', (e) => {
+        if(e.key === 'w') keys.w = true;
+        if(e.key === 'a') keys.a = true;
+        if(e.key === 's') keys.s = true;
+        if(e.key === 'd') keys.d = true;
+        if(e.key === 'e') toggleInventory(true);
+        if(e.key === 'b') buildBlock(true);
+    });
+    document.addEventListener('keyup', (e) => {
+        if(e.key === 'w') keys.w = false;
+        if(e.key === 'a') keys.a = false;
+        if(e.key === 's') keys.s = false;
+        if(e.key === 'd') keys.d = false;
+    });
+    document.addEventListener('mousedown', () => {
+        if(!renderer.xr.isPresenting) {
+            if(!desktopControls.isLocked) desktopControls.lock();
+            else interact(camera.position, camera.getWorldDirection(new THREE.Vector3()));
+        }
+    });
+
+    // --- 8. INTERACTION LOGIC (SHARED) ---
+    const raycaster = new THREE.Raycaster();
+
+    function toggleInventory(isDesktop) {
+        STATE.inventoryOpen = !STATE.inventoryOpen;
+        uiPlane.visible = STATE.inventoryOpen;
+        
+        if(STATE.inventoryOpen) {
+            // Position UI in front of player
+            const pPos = dolly.position.clone();
+            pPos.y += (isDesktop ? 0 : 1.6);
+            const dir = new THREE.Vector3();
+            if(isDesktop) camera.getWorldDirection(dir);
+            else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
+            
+            uiPlane.position.copy(pPos).add(dir.multiplyScalar(2));
+            uiPlane.lookAt(pPos);
+            drawUI();
+        }
+    }
+
+    function buildBlock(isDesktop) {
+        // Place a block in front
+        const dir = new THREE.Vector3();
+        if(isDesktop) camera.getWorldDirection(dir);
+        else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
+        
+        const pos = dolly.position.clone().add(dir.multiplyScalar(3));
+        createBlock(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z), 'wood');
+    }
+
+    function interact(origin, direction) {
+        raycaster.set(origin, direction);
+        
+        // UI
+        if(STATE.inventoryOpen) {
+            const hits = raycaster.intersectObject(uiPlane);
+            if(hits.length > 0) {
+                const uv = hits[0].uv;
+                const cx = uv.x * 1024; const cy = (1-uv.y) * 768;
+                for(let b of uiHitboxes) {
+                    if(cx >= b.x && cx <= b.x+b.w && cy >= b.y && cy <= b.y+b.h) {
+                        if(b.action === 'clear') STATE.forge[b.key] = null;
+                        if(b.action === 'add') { if(b.type==='root') STATE.forge.root = b.val; else STATE.forge.suf = b.val; }
+                        if(b.action === 'forge') handleForge();
+                        drawUI();
+                        return;
+                    }
+                }
+            }
+        } 
+        // Mining
+        else {
+            const hits = raycaster.intersectObjects(activeBlocks);
+            if(hits.length > 0 && hits[0].distance < 6) {
+                const hit = hits[0].object;
+                scene.remove(hit);
+                activeBlocks.splice(activeBlocks.indexOf(hit), 1);
+                
+                // Loot
+                const type = hit.userData.type || 'dirt';
+                if(LOOT_TABLE[type] && Math.random() < 0.7) {
+                    if(Math.random() < 0.5) {
+                        const w = LOOT_TABLE[type].roots[Math.floor(Math.random() * LOOT_TABLE[type].roots.length)];
+                        STATE.roots.push(w); STATE.msg = `Got Root: ${w}`;
+                    } else {
+                        const a = LOOT_TABLE[type].affixes[Math.floor(Math.random() * LOOT_TABLE[type].affixes.length)];
+                        STATE.affixes.push({val:a, type:'suf'}); STATE.msg = `Got Affix: -${a}`;
+                    }
+                    STATE.gems++;
+                    document.getElementById('ui-gems').innerText = STATE.gems;
+                }
+            }
+        }
+    }
+
+    // VR Trigger Handler
+    function onSelectStart(e) {
+        const c = e.target;
+        const mat = new THREE.Matrix4().extractRotation(c.matrixWorld);
+        const dir = new THREE.Vector3(0,0,-1).applyMatrix4(mat);
+        const origin = new THREE.Vector3().setFromMatrixPosition(c.matrixWorld);
+        interact(origin, dir);
+    }
+    controller1.addEventListener('selectstart', onSelectStart);
+    controller2.addEventListener('selectstart', onSelectStart);
+    controller1.addEventListener('squeezestart', () => toggleInventory(false));
+    controller2.addEventListener('squeezestart', () => toggleInventory(false));
+
+    // --- 9. MAIN LOOP ---
+    const clock = new THREE.Clock();
+    
+    // Spawn initial enemies
+    setInterval(() => { if(enemies.length < 5) spawnEnemy(); }, 5000);
+
+    renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        
+        // Day/Night Cycle (Visual)
+        const time = Date.now() * 0.0001;
+        const r = Math.sin(time) * 0.5 + 0.5;
+        scene.background.setRGB(r * 0.53, r * 0.8, r * 0.92); // Sky color shift
+
+        // Enemy Logic
+        updateEnemies(dt);
+
+        // Movement
+        if(renderer.xr.isPresenting) {
+            // VR Joystick logic (Simplified)
+            const session = renderer.xr.getSession();
+            if(session && session.inputSources) {
+                for(let src of session.inputSources) {
+                    if(src.gamepad && src.handedness === 'left') {
+                        const x = src.gamepad.axes[2], y = src.gamepad.axes[3];
+                        if(Math.abs(x)>0.1 || Math.abs(y)>0.1) {
+                            const dir = new THREE.Vector3(x, 0, y).applyQuaternion(dolly.quaternion);
+                            dolly.position.add(dir.multiplyScalar(3 * dt));
+                        }
+                    }
+                    if(src.gamepad && src.handedness === 'right') {
+                        const x = src.gamepad.axes[2];
+                        if(Math.abs(x)>0.1) dolly.rotation.y -= x * 2 * dt;
+                    }
+                }
+            }
+        } else {
+            // Desktop WASD
+            if(desktopControls.isLocked) {
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
+                const side = new THREE.Vector3().crossVectors(camera.up, dir).normalize();
+                const speed = 5 * dt;
+                
+                if(keys.w) dolly.position.add(dir.multiplyScalar(speed));
+                if(keys.s) dolly.position.add(dir.multiplyScalar(-speed));
+                if(keys.a) dolly.position.add(side.multiplyScalar(speed));
+                if(keys.d) dolly.position.add(side.multiplyScalar(-speed));
+            }
+        }
+
+        renderer.render(scene, camera);
     });
 
 </script>
