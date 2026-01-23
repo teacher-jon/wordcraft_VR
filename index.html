@@ -1,49 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>WordCraft 3D: Faithful Edition</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
-        
-        /* DESKTOP HUD */
-        #desktop-ui {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        #crosshair {
-            width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.8);
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-        }
-        #hud-info {
-            position: absolute; top: 20px; left: 20px; color: white; text-shadow: 2px 2px 0 #000;
-            font-size: 20px; font-weight: bold;
-        }
-        #instructions {
-            position: absolute; bottom: 20px; left: 20px; color: #ddd; font-size: 14px;
-            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px;
-        }
-    </style>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
-</head>
-<body>
-
-<div id="desktop-ui">
-    <div id="crosshair"></div>
-    <div id="hud-info">💎 Fragments: <span id="ui-gems">0</span> | HP: <span id="ui-hp">3</span></div>
-    <div id="instructions">
-        <b>WASD</b> Move | <b>Click</b> Mine | <b>B</b> Build | <b>E</b> Inventory | <b>VR:</b> Trigger Mine / Grip Inv
-    </div>
-</div>
-
 <script type="module">
     import * as THREE from 'three';
     import { VRButton } from 'three/addons/webxr/VRButton.js';
@@ -55,7 +9,7 @@
         hp: 3, maxHp: 3, gems: 0,
         roots: [], affixes: [],
         inventoryOpen: false,
-        activeBlock: 'wood', // For building
+        activeBlock: 'wood',
         forge: { pre: null, root: null, suf: null },
         msg: "Forge a word to begin!"
     };
@@ -66,83 +20,106 @@
         "wood": { roots: ["grow", "leaf", "tree"], affixes: ["ness", "ful", "less"] }
     };
 
-    // --- 2. ASSET LOADING (PIXEL ART STYLE) ---
+    // --- 2. ASSET LOADING (FIXED TEXTURES) ---
     const textureLoader = new THREE.TextureLoader();
     
-    // Load TILES (Reuse your 2D asset)
+    // Load TILES
     const tilesTex = textureLoader.load('assets/tiles.png');
-    tilesTex.magFilter = THREE.NearestFilter; // KEEP PIXELS SHARP
+    tilesTex.colorSpace = THREE.SRGBColorSpace; // FIX: Makes colors look correct
+    tilesTex.magFilter = THREE.NearestFilter;   // FIX: Keeps pixels sharp (no blur)
     tilesTex.minFilter = THREE.NearestFilter;
-    
-    // Load CHARS (Reuse your 2D asset)
+
+    // Load CHARS
     const charsTex = textureLoader.load('assets/chars.png');
+    charsTex.colorSpace = THREE.SRGBColorSpace;
     charsTex.magFilter = THREE.NearestFilter;
     charsTex.minFilter = THREE.NearestFilter;
 
-    // Helper to crop texture for specific block types based on your 2D grid logic
-    // We clone the texture so different blocks can show different parts of the image
-    function getMat(index) {
-        const tex = tilesTex.clone();
+    // TEXTURE HELPER: Creates a material for a specific slice of your tiles.png
+    function getMat(rowIndex) {
+        const tex = tilesTex.clone(); // Clone so we can offset this specific block
         tex.magFilter = THREE.NearestFilter;
-        tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(1, 0.2); // Assuming 5 rows in your tiles.png
-        tex.offset.y = 1 - ((index + 1) * 0.2); 
+        tex.minFilter = THREE.NearestFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        
+        // Assuming 5 rows in your image (Grass, Dirt, Stone, Wood, Leaves)
+        // Adjust '0.2' if you have a different number of rows (1 / num_rows)
+        tex.repeat.set(1, 0.2); 
+        tex.offset.y = 1 - ((rowIndex + 1) * 0.2); 
+        
         return new THREE.MeshLambertMaterial({ map: tex });
     }
 
-    // Material Atlas (Approximate mapping to your 2D rows)
     const MATERIALS = {
-        'dirt': getMat(1),  // Row 1
-        'stone': getMat(2), // Row 2
-        'obsidian': getMat(3), // Row 3
-        'wood': getMat(4),  // Row 4
-        'leaves': new THREE.MeshLambertMaterial({ color: 0x228b22 }) // Fallback for leaves
+        'grass': getMat(0), // Row 1
+        'dirt': getMat(1),  // Row 2
+        'stone': getMat(2), // Row 3
+        'wood': getMat(3),  // Row 4
+        'leaves': new THREE.MeshLambertMaterial({ color: 0x228b22 }) // Fallback color
     };
 
     // --- 3. SCENE & WORLD ---
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB);
-    scene.fog = new THREE.Fog(0x87CEEB, 15, 40); // Close fog for that "retro" feel
+    scene.fog = new THREE.Fog(0x87CEEB, 15, 40);
 
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 100);
-    const dolly = new THREE.Group(); // The Player
+    const dolly = new THREE.Group();
     dolly.position.set(0, 8, 0);
     dolly.add(camera);
     scene.add(dolly);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false }); // False for pixel look
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
     document.body.appendChild(VRButton.createButton(renderer));
 
-    // Lighting
+    // LIGHTING
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(ambientLight);
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
     sunLight.position.set(10, 20, 10);
+    sunLight.castShadow = true;
     scene.add(sunLight);
 
     // --- 4. VOXEL WORLD GENERATION ---
-    const CHUNKS = {};
-    const activeBlocks = []; // For Raycasting
+    const activeBlocks = [];
     const blockGeo = new THREE.BoxGeometry(1, 1, 1);
 
+    function createBlock(x, y, z, type) {
+        // If it's the top layer of dirt, switch to grass texture
+        let finalType = type;
+        if(type === 'dirt' && !checkBlockAbove(x, y, z)) {
+            finalType = 'grass';
+        }
+
+        const mat = MATERIALS[finalType] || MATERIALS['dirt'];
+        const mesh = new THREE.Mesh(blockGeo, mat);
+        mesh.position.set(x, y, z);
+        mesh.userData = { type: type, isBlock: true };
+        scene.add(mesh);
+        activeBlocks.push(mesh);
+    }
+
+    // Helper to check if a block exists (for grass logic)
+    function checkBlockAbove(x, y, z) {
+        return activeBlocks.some(b => b.position.x === x && b.position.y === y+1 && b.position.z === z);
+    }
+
     function generateChunk(cx, cz) {
-        // Simple generation loop similar to your 2D logic
         for(let x = cx*16; x < (cx+1)*16; x++) {
             for(let z = cz*16; z < (cz+1)*16; z++) {
-                // Heightmap
                 let h = Math.floor(Math.sin(x*0.1)*3 + Math.cos(z*0.1)*3);
                 
-                // Grass/Dirt
-                createBlock(x, h, z, 'dirt');
+                // Top Layer
+                createBlock(x, h, z, 'dirt'); // Will turn to grass automatically
                 createBlock(x, h-1, z, 'dirt');
                 
-                // Stone below
+                // Deep Stone
                 for(let d=2; d<6; d++) createBlock(x, h-d, z, 'stone');
                 
-                // Trees (similar logic to 2D)
+                // Trees
                 if(Math.random() < 0.02) {
                     createBlock(x, h+1, z, 'wood');
                     createBlock(x, h+2, z, 'wood');
@@ -155,74 +132,78 @@
             }
         }
     }
-
-    function createBlock(x, y, z, type) {
-        const mat = MATERIALS[type] || MATERIALS['dirt'];
-        const mesh = new THREE.Mesh(blockGeo, mat);
-        mesh.position.set(x, y, z);
-        mesh.userData = { type: type, isBlock: true };
-        scene.add(mesh);
-        activeBlocks.push(mesh);
-    }
-
-    // Init World
     generateChunk(0, 0);
 
-    // --- 5. ENEMIES (2D SPRITES IN 3D) ---
+    // --- 5. 3D ENEMIES (CUBES NOT SPRITES) ---
     const enemies = [];
     
-    // Texture logic for sprites
-    function getSpriteMat(col, row) {
+    // Create materials for the enemy cubes
+    // We crop the chars.png to find the Bat or Slime face
+    function getCharMat(col, row, colorHex) {
         const tex = charsTex.clone();
         tex.magFilter = THREE.NearestFilter;
-        tex.repeat.set(0.33, 0.33); // 3x3 Grid
+        // Assuming chars.png is a 3x3 grid
+        tex.repeat.set(0.33, 0.33); 
         tex.offset.set(col * 0.33, 1 - (row+1) * 0.33);
-        return new THREE.SpriteMaterial({ map: tex });
+        
+        return new THREE.MeshStandardMaterial({ 
+            map: tex, 
+            color: colorHex, // Tint the cube
+            transparent: true 
+        });
     }
-    
-    const matBat = getSpriteMat(1, 1); // Row 2, Col 2 (Approx)
-    const matSlime = getSpriteMat(2, 2); // Row 3, Col 3
+
+    const matSlime = getCharMat(2, 2, 0x00ff00); // Green Tint
+    const matBat = getCharMat(1, 1, 0xff0000);   // Red Tint
+    const enemyGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8); // Slightly smaller than blocks
 
     function spawnEnemy() {
         const angle = Math.random() * Math.PI * 2;
-        const dist = 10 + Math.random() * 5;
+        const dist = 8 + Math.random() * 5;
         const x = dolly.position.x + Math.cos(angle) * dist;
         const z = dolly.position.z + Math.sin(angle) * dist;
         
         const type = Math.random() > 0.5 ? 'bat' : 'slime';
         const mat = type === 'bat' ? matBat : matSlime;
-        const sprite = new THREE.Sprite(mat);
         
-        sprite.position.set(x, 5, z); // Spawn in air
-        sprite.scale.set(1.5, 1.5, 1.5);
-        sprite.userData = { type: type, hp: 2 };
+        // NEW: Creating a Mesh (Cube) instead of a Sprite (Paper)
+        const enemy = new THREE.Mesh(enemyGeo, mat);
         
-        scene.add(sprite);
-        enemies.push(sprite);
+        // Position it high so it falls/floats
+        enemy.position.set(x, 10, z);
+        enemy.userData = { type: type, hp: 2, dy: 0 }; // dy for bouncing
+        
+        scene.add(enemy);
+        enemies.push(enemy);
     }
 
-    // Update Loop for enemies
     function updateEnemies(dt) {
         enemies.forEach((e, i) => {
             // Move toward player
             const dir = new THREE.Vector3().subVectors(dolly.position, e.position).normalize();
-            e.position.add(dir.multiplyScalar(2 * dt)); // Speed
+            e.position.add(dir.multiplyScalar(2 * dt)); 
             
-            // Simple Collision
+            // "Bounce" animation
+            e.userData.dy += dt * 5;
+            e.position.y += Math.sin(e.userData.dy) * 0.02;
+
+            // Face the player
+            e.lookAt(dolly.position);
+
+            // Collision
             if(e.position.distanceTo(dolly.position) < 1.0) {
                 STATE.hp--;
                 document.getElementById('ui-hp').innerText = STATE.hp;
                 scene.remove(e);
                 enemies.splice(i, 1);
-                // Simple hurt effect
+                // Flash Red Screen
                 scene.background = new THREE.Color(0xff0000);
                 setTimeout(() => scene.background = new THREE.Color(0x87CEEB), 100);
             }
         });
     }
 
-    // --- 6. UI SYSTEM (CANVAS TEXTURE) ---
-    // This creates the "Inventory Tablet"
+    // --- 6. UI SYSTEM (CANVAS TABLET) ---
     const uiCanvas = document.createElement('canvas');
     uiCanvas.width = 1024; uiCanvas.height = 768;
     const uiCtx = uiCanvas.getContext('2d');
@@ -235,17 +216,14 @@
     let uiHitboxes = [];
 
     function drawUI() {
-        // Draw the beige inventory background similar to your 2D game
         uiCtx.fillStyle = "#f3e5f5";
         uiCtx.fillRect(0, 0, 1024, 768);
         uiCtx.lineWidth = 15; uiCtx.strokeStyle = "#5d4037"; uiCtx.strokeRect(0, 0, 1024, 768);
         uiHitboxes = [];
 
-        // Header
         uiCtx.fillStyle = "#3e2723"; uiCtx.font = "bold 50px Courier New"; uiCtx.textAlign = "center";
         uiCtx.fillText(`WORD FORGE`, 512, 80);
 
-        // Slots
         const drawSlot = (label, text, x, y, key) => {
             uiCtx.fillStyle = "rgba(255,255,255,0.8)"; uiCtx.fillRect(x, y, 160, 160); 
             uiCtx.lineWidth = 4; uiCtx.strokeRect(x, y, 160, 160);
@@ -258,15 +236,12 @@
         drawSlot("Root", STATE.forge.root, 432, 150, 'root');
         drawSlot("Suf", STATE.forge.suf, 664, 150, 'suf');
 
-        // Forge Button
         uiCtx.fillStyle = "#27ae60"; uiCtx.fillRect(412, 350, 200, 80);
         uiCtx.fillStyle = "white"; uiCtx.font = "bold 40px Courier New"; uiCtx.fillText("FORGE", 512, 405);
         uiHitboxes.push({x:412, y:350, w:200, h:80, action: 'forge'});
 
-        // Msg
         uiCtx.fillStyle = "#e67e22"; uiCtx.font = "30px Courier New"; uiCtx.fillText(STATE.msg, 512, 480);
 
-        // Word Chips
         const drawChip = (text, x, y, type, val) => {
             uiCtx.fillStyle = type === 'root' ? "#c8e6c9" : "#bbdefb";
             uiCtx.fillRect(x, y, 200, 60);
@@ -275,7 +250,6 @@
             uiHitboxes.push({x, y, w:200, h:60, action: 'add', type: type, val: val});
         };
 
-        // Render first 5 items only for simplicity
         STATE.roots.slice(0, 4).forEach((r, i) => drawChip(r, 100, 550 + (i*70), 'root', r));
         STATE.affixes.slice(0, 4).forEach((a, i) => drawChip("-" + a.val, 724, 550 + (i*70), 'suf', a.val));
 
@@ -291,7 +265,6 @@
             const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
             if(!res.ok) throw new Error();
             const data = await res.json();
-            const def = data[0].meanings[0].definitions[0].definition;
             STATE.msg = `${word.toUpperCase()}: Valid!`;
             STATE.gems += 15;
             document.getElementById('ui-gems').innerText = STATE.gems;
@@ -302,20 +275,16 @@
         drawUI();
     }
 
-    // --- 7. CONTROLS (VR & DESKTOP) ---
-    
-    // VR Controllers
+    // --- 7. CONTROLS ---
     const controller1 = renderer.xr.getController(0);
     const controller2 = renderer.xr.getController(1);
     dolly.add(controller1); dolly.add(controller2);
     
-    // Visual Ray
     const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5)]);
     const rayLine = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({ color: 0xff0000 }));
     controller1.add(rayLine.clone());
     controller2.add(rayLine);
 
-    // Desktop Controls
     const desktopControls = new PointerLockControls(camera, document.body);
     const keys = { w:false, a:false, s:false, d:false };
     document.addEventListener('keydown', (e) => {
@@ -339,21 +308,18 @@
         }
     });
 
-    // --- 8. INTERACTION LOGIC (SHARED) ---
+    // --- 8. INTERACTION ---
     const raycaster = new THREE.Raycaster();
 
     function toggleInventory(isDesktop) {
         STATE.inventoryOpen = !STATE.inventoryOpen;
         uiPlane.visible = STATE.inventoryOpen;
-        
         if(STATE.inventoryOpen) {
-            // Position UI in front of player
             const pPos = dolly.position.clone();
             pPos.y += (isDesktop ? 0 : 1.6);
             const dir = new THREE.Vector3();
             if(isDesktop) camera.getWorldDirection(dir);
             else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
-            
             uiPlane.position.copy(pPos).add(dir.multiplyScalar(2));
             uiPlane.lookAt(pPos);
             drawUI();
@@ -361,19 +327,15 @@
     }
 
     function buildBlock(isDesktop) {
-        // Place a block in front
         const dir = new THREE.Vector3();
         if(isDesktop) camera.getWorldDirection(dir);
         else dir.set(0,0,-1).applyQuaternion(dolly.quaternion);
-        
         const pos = dolly.position.clone().add(dir.multiplyScalar(3));
         createBlock(Math.round(pos.x), Math.round(pos.y), Math.round(pos.z), 'wood');
     }
 
     function interact(origin, direction) {
         raycaster.set(origin, direction);
-        
-        // UI
         if(STATE.inventoryOpen) {
             const hits = raycaster.intersectObject(uiPlane);
             if(hits.length > 0) {
@@ -389,16 +351,13 @@
                     }
                 }
             }
-        } 
-        // Mining
-        else {
+        } else {
             const hits = raycaster.intersectObjects(activeBlocks);
             if(hits.length > 0 && hits[0].distance < 6) {
                 const hit = hits[0].object;
                 scene.remove(hit);
                 activeBlocks.splice(activeBlocks.indexOf(hit), 1);
                 
-                // Loot
                 const type = hit.userData.type || 'dirt';
                 if(LOOT_TABLE[type] && Math.random() < 0.7) {
                     if(Math.random() < 0.5) {
@@ -415,7 +374,6 @@
         }
     }
 
-    // VR Trigger Handler
     function onSelectStart(e) {
         const c = e.target;
         const mat = new THREE.Matrix4().extractRotation(c.matrixWorld);
@@ -428,26 +386,16 @@
     controller1.addEventListener('squeezestart', () => toggleInventory(false));
     controller2.addEventListener('squeezestart', () => toggleInventory(false));
 
-    // --- 9. MAIN LOOP ---
+    // --- 9. LOOP ---
     const clock = new THREE.Clock();
-    
-    // Spawn initial enemies
     setInterval(() => { if(enemies.length < 5) spawnEnemy(); }, 5000);
 
     renderer.setAnimationLoop(() => {
         const dt = clock.getDelta();
         
-        // Day/Night Cycle (Visual)
-        const time = Date.now() * 0.0001;
-        const r = Math.sin(time) * 0.5 + 0.5;
-        scene.background.setRGB(r * 0.53, r * 0.8, r * 0.92); // Sky color shift
-
-        // Enemy Logic
         updateEnemies(dt);
 
-        // Movement
         if(renderer.xr.isPresenting) {
-            // VR Joystick logic (Simplified)
             const session = renderer.xr.getSession();
             if(session && session.inputSources) {
                 for(let src of session.inputSources) {
@@ -465,7 +413,6 @@
                 }
             }
         } else {
-            // Desktop WASD
             if(desktopControls.isLocked) {
                 const dir = new THREE.Vector3();
                 camera.getWorldDirection(dir); dir.y = 0; dir.normalize();
@@ -483,5 +430,3 @@
     });
 
 </script>
-</body>
-</html>
